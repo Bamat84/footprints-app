@@ -437,6 +437,17 @@ input[type=checkbox]{width:auto;accent-color:var(--purple);}
       <div><label>Facturatie e-mail</label><input type="text" id="k-femail" placeholder="facturen@klant.be"></div>
       <div><label>Betaaltermijn (dagen)</label><input type="number" id="k-termijn" placeholder="30"></div>
     </div>
+    <div class="fr c2">
+      <div><label>Btw-regime</label>
+        <select id="k-btwregime" onchange="btwRegimeChange()">
+          <option value="">Belgische btw 21%</option>
+          <option value="ic">Intracommunautair — btw verlegd</option>
+          <option value="buitenEU">Buiten de EU — niet onderworpen</option>
+          <option value="vrij">Vrijgesteld</option>
+        </select>
+      </div>
+      <div><label>Vermelding op de factuur</label><input type="text" id="k-btwtekst" placeholder="Wordt automatisch ingevuld, pas aan indien nodig"></div>
+    </div>
     <div class="fr c3">
       <div><label>Projecten (komma-gescheiden)</label><input type="text" id="k-project" placeholder="Project A, Project B"></div>
       <div><label>Standaard tarief (€/u)</label><input type="number" id="k-tarief" placeholder="125"></div>
@@ -609,7 +620,8 @@ async function saveClient(c){
     adres:c.adres||null, plaats:c.plaats||null, land:c.land||null,
     btw:c.btw||null, email:c.email||null, tel:c.tel||null,
     tarief:c.tarief||null, fcontact:c.fcontact||null, femail:c.femail||null,
-    termijn:c.termijn||null, project:c.project||null, actief:!c.archived
+    termijn:c.termijn||null, btwregime:c.btwregime||null, btwtekst:c.btwtekst||null,
+    project:c.project||null, actief:!c.archived
   };
   try{
     await sbUpsert('clients',[row]);
@@ -620,8 +632,9 @@ async function saveClient(c){
     const basis=Object.assign({},row);
     delete basis.plaats; delete basis.land; delete basis.tarief;
     delete basis.fcontact; delete basis.femail; delete basis.termijn;
+    delete basis.btwregime; delete basis.btwtekst;
     await sbUpsert('clients',[basis]);
-    console.warn('De clients-tabel mist een of meer van de kolommen plaats, land, tarief, fcontact, femail of termijn. Die velden zijn niet bewaard — voeg de kolommen toe in Supabase.');
+    console.warn('De clients-tabel mist een of meer van de kolommen plaats, land, tarief, fcontact, femail, termijn, btwregime of btwtekst. Die velden zijn niet bewaard — voeg de kolommen toe in Supabase.');
   }
 }
 async function saveSettings(){
@@ -1155,11 +1168,36 @@ function calcVervaldag(){
   if(d){const dt=new Date(d);dt.setDate(dt.getDate()+t);document.getElementById('f-vervaldag').value=dt.toISOString().slice(0,10);}
   renderFac();
 }
+// Btw-regimes. Het percentage en de standaardvermelding op de factuur.
+// De tekst is bewust aanpasbaar per klant.
+const BTW_REGIMES={
+  '':{pct:21,tekst:''},
+  'ic':{pct:0,tekst:'Btw verlegd — art. 21, §2 W.Btw'},
+  'buitenEU':{pct:0,tekst:'Niet onderworpen aan Belgische btw — art. 21, §2 W.Btw'},
+  'vrij':{pct:0,tekst:'Vrijgesteld van btw'}
+};
+function btwRegimeChange(){
+  const r=document.getElementById('k-btwregime').value;
+  const t=document.getElementById('k-btwtekst');
+  // Alleen voorstellen zolang het veld leeg is of nog een standaardtekst bevat.
+  const standaarden=Object.values(BTW_REGIMES).map(x=>x.tekst);
+  if(!t.value.trim()||standaarden.includes(t.value.trim()))t.value=BTW_REGIMES[r]?BTW_REGIMES[r].tekst:'';
+}
+function btwVermelding(c){
+  if(!c)return'';
+  if(c.btwtekst)return c.btwtekst;
+  const r=BTW_REGIMES[c.btwregime||''];
+  return r?r.tekst:'';
+}
 function fKlantChange(){
   window._facSelectieIds=null;window._facSelectieCid=null;
-  // Betaaltermijn van de klant overnemen en de vervaldatum herberekenen.
+  // Betaaltermijn en btw-regime van de klant overnemen.
   const c=gc(parseInt(document.getElementById('f-klant').value));
-  if(c&&c.termijn){document.getElementById('f-termijn').value=c.termijn;calcVervaldag();return;}
+  if(c){
+    const r=BTW_REGIMES[c.btwregime||''];
+    if(r)document.getElementById('f-btw').value=r.pct;
+    if(c.termijn){document.getElementById('f-termijn').value=c.termijn;calcVervaldag();return;}
+  }
   renderFac();
 }
 function addVrij(){
@@ -1268,7 +1306,10 @@ function renderFac(){
   document.getElementById('fp-btw-val').textContent=eur(btwBedrag);
   document.getElementById('fp-totaal').textContent=eur(totaal);
   const iban=db.settings.iban;
-  document.getElementById('fp-betaling').textContent=iban?`Gelieve te betalen op rekeningnummer ${iban}${nummer?' met referte '+nummer:''}.`:'';
+  const vermelding=btwVermelding(gc(parseInt(document.getElementById('f-klant').value)));
+  document.getElementById('fp-betaling').innerHTML=
+    (vermelding?`<div style="font-weight:600;color:var(--text);margin-bottom:4px;">${vermelding}</div>`:'')+
+    (iban?`Gelieve te betalen op rekeningnummer ${iban}${nummer?' met referte '+nummer:''}.`:'');
 }
 
 function buildFactuurPDF(d,externalDoc,returnDoc){
@@ -1375,6 +1416,16 @@ function buildFactuurPDF(d,externalDoc,returnDoc){
       y+=5;
     }
   });
+  // Btw-vermelding, bijvoorbeeld bij verlegde heffing.
+  const vermelding=btwVermelding(d.c);
+  if(vermelding){
+    y+=10;doc.setFontSize(9);doc.setFont(undefined,'bold');doc.setTextColor(40);
+    doc.text(vermelding,ml,y,{maxWidth:W-ml-mr});
+    doc.setFont(undefined,'normal');
+    if(d.c&&d.c.btw){y+=5;doc.setFontSize(8.5);doc.setTextColor(70);
+      doc.text('Btw-identificatienummer klant: '+d.c.btw,ml,y,{maxWidth:W-ml-mr});}
+    y-=5;
+  }
   // Betalingslijn onderaan
   if(s.iban){
     y+=10;doc.setFontSize(8.5);doc.setFont(undefined,'normal');doc.setTextColor(70);
@@ -1677,6 +1728,8 @@ function addKlant(){
       c.fcontact=document.getElementById('k-fcontact').value.trim();
       c.femail=document.getElementById('k-femail').value.trim();
       c.termijn=parseInt(document.getElementById('k-termijn').value,10)||null;
+      c.btwregime=document.getElementById('k-btwregime').value;
+      c.btwtekst=document.getElementById('k-btwtekst').value.trim();
       saveClient(c).catch(e=>console.error('SB save klant:',e));
     }
     cancelEditKlant();fillSels();renderK();return;
@@ -1685,11 +1738,11 @@ function addKlant(){
   // nummer nooit opnieuw wordt uitgedeeld.
   const hoogste=db.clients.reduce((m,c)=>{const n=parseInt(c.nr,10);return isNaN(n)?m:Math.max(m,n);},0);
   const nr=document.getElementById('k-nr').value.trim()||String(hoogste+1).padStart(3,'0');
-  const newClient={id:db.nextId++,nr,naam,adres:document.getElementById('k-adres').value.trim(),plaats:document.getElementById('k-plaats').value.trim(),land:document.getElementById('k-land').value.trim(),btw:document.getElementById('k-btw').value.trim(),email:document.getElementById('k-email').value.trim(),tel:document.getElementById('k-tel').value.trim(),fcontact:document.getElementById('k-fcontact').value.trim(),femail:document.getElementById('k-femail').value.trim(),termijn:parseInt(document.getElementById('k-termijn').value,10)||null,project:document.getElementById('k-project').value.trim()||naam,tarief,color:COLORS[db.clients.length%COLORS.length],archived:false};
+  const newClient={id:db.nextId++,nr,naam,adres:document.getElementById('k-adres').value.trim(),plaats:document.getElementById('k-plaats').value.trim(),land:document.getElementById('k-land').value.trim(),btw:document.getElementById('k-btw').value.trim(),email:document.getElementById('k-email').value.trim(),tel:document.getElementById('k-tel').value.trim(),fcontact:document.getElementById('k-fcontact').value.trim(),femail:document.getElementById('k-femail').value.trim(),termijn:parseInt(document.getElementById('k-termijn').value,10)||null,btwregime:document.getElementById('k-btwregime').value,btwtekst:document.getElementById('k-btwtekst').value.trim(),project:document.getElementById('k-project').value.trim()||naam,tarief,color:COLORS[db.clients.length%COLORS.length],archived:false};
   db.clients.push(newClient);
   saveClient(newClient).then(()=>saveSettings()).catch(e=>console.error('SB save client:',e));
   fillSels();renderK();
-  ['k-naam','k-nr','k-adres','k-plaats','k-land','k-btw','k-email','k-tel','k-fcontact','k-femail','k-termijn','k-project','k-tarief'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  ['k-naam','k-nr','k-adres','k-plaats','k-land','k-btw','k-email','k-tel','k-fcontact','k-femail','k-termijn','k-btwregime','k-btwtekst','k-project','k-tarief'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
 }
 let kCurrentFilter='active';
 function kFilter(f){kCurrentFilter=f;document.getElementById('k-filter-active').classList.toggle('active',f==='active');document.getElementById('k-filter-archived').classList.toggle('active',f==='archived');renderK();}
@@ -1709,6 +1762,8 @@ function editKlant(id){
   document.getElementById('k-fcontact').value=c.fcontact||'';
   document.getElementById('k-femail').value=c.femail||'';
   document.getElementById('k-termijn').value=c.termijn||'';
+  document.getElementById('k-btwregime').value=c.btwregime||'';
+  document.getElementById('k-btwtekst').value=c.btwtekst||'';
   document.getElementById('k-tarief').value=c.tarief||'';
   document.getElementById('k-save-btn').textContent='Klant opslaan';
   document.getElementById('k-edit-banner').style.display='';
@@ -1716,7 +1771,7 @@ function editKlant(id){
 }
 function cancelEditKlant(){
   _editKlantId=null;
-  ['k-naam','k-nr','k-adres','k-plaats','k-land','k-btw','k-email','k-tel','k-fcontact','k-femail','k-termijn','k-tarief'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  ['k-naam','k-nr','k-adres','k-plaats','k-land','k-btw','k-email','k-tel','k-fcontact','k-femail','k-termijn','k-btwregime','k-btwtekst','k-tarief'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   const btn=document.getElementById('k-save-btn');if(btn)btn.textContent='+ Klant toevoegen';
   const banner=document.getElementById('k-edit-banner');if(banner)banner.style.display='none';
 }
@@ -1940,6 +1995,7 @@ function sbClientToLocal(r){
     tarief:r.tarief!=null?parseFloat(r.tarief):DEFAULT_TARIEF,
     fcontact:r.fcontact||'',femail:r.femail||'',
     termijn:r.termijn!=null?parseInt(r.termijn,10):null,
+    btwregime:r.btwregime||'',btwtekst:r.btwtekst||'',
     project:r.project||'',actief:r.actief!==false,
     archived:r.actief===false,color:'c0'};
 }

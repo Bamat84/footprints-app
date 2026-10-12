@@ -549,7 +549,12 @@ async function sbUpsert(table, data) {
     body: JSON.stringify(data)
   });
   if (!r.ok) throw new Error(await r.text());
-  return r.status === 204 ? [] : r.json();
+  // Supabase stuurt bij een geslaagde insert vaak een lege body terug (201 of
+  // 204). r.json() struikelt daarover, dus eerst lezen en pas ontleden als er
+  // iets staat.
+  const txt = await r.text();
+  if (!txt) return [];
+  try { return JSON.parse(txt); } catch (e) { return []; }
 }
 async function sbDelete(table, filter) {
   const r = await fetch(`${SB_URL}/rest/v1/${table}?${filter}`, {

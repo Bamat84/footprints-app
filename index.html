@@ -372,6 +372,10 @@ input[type=checkbox]{width:auto;accent-color:var(--purple);}
       <div><label>BTW nummer</label><input type="text" id="k-btw" placeholder="BE 0123.456.789"></div>
       <div><label>Email</label><input type="text" id="k-email" placeholder="info@klant.be"></div>
     </div>
+    <div class="fr c2">
+      <div><label>Land</label><input type="text" id="k-land" placeholder="België"></div>
+      <div><label>Telefoon</label><input type="text" id="k-tel" placeholder="+32 9 123 45 67"></div>
+    </div>
     <div class="fr c3">
       <div><label>Projecten (komma-gescheiden)</label><input type="text" id="k-project" placeholder="Project A, Project B"></div>
       <div><label>Standaard tarief (€/u)</label><input type="number" id="k-tarief" placeholder="125"></div>
@@ -1394,11 +1398,11 @@ function addKlant(){
     cancelEditKlant();fillSels();renderK();return;
   }
   const nr=document.getElementById('k-nr').value.trim()||String(db.clients.length+1).padStart(3,'0');
-  const newClient={id:db.nextId++,nr,naam,adres:document.getElementById('k-adres').value.trim(),plaats:document.getElementById('k-plaats').value.trim(),btw:document.getElementById('k-btw').value.trim(),email:document.getElementById('k-email').value.trim(),project:document.getElementById('k-project').value.trim()||naam,tarief,color:COLORS[db.clients.length%COLORS.length],archived:false};
+  const newClient={id:db.nextId++,nr,naam,adres:document.getElementById('k-adres').value.trim(),plaats:document.getElementById('k-plaats').value.trim(),land:document.getElementById('k-land').value.trim(),btw:document.getElementById('k-btw').value.trim(),email:document.getElementById('k-email').value.trim(),tel:document.getElementById('k-tel').value.trim(),project:document.getElementById('k-project').value.trim()||naam,tarief,color:COLORS[db.clients.length%COLORS.length],archived:false};
   db.clients.push(newClient);
   saveClient(newClient).then(()=>saveSettings()).catch(e=>console.error('SB save client:',e));
   fillSels();renderK();
-  ['k-naam','k-nr','k-adres','k-plaats','k-btw','k-email','k-project','k-tarief'].forEach(id=>document.getElementById(id).value='');
+  ['k-naam','k-nr','k-adres','k-plaats','k-land','k-btw','k-email','k-tel','k-project','k-tarief'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
 }
 let kCurrentFilter='active';
 function kFilter(f){kCurrentFilter=f;document.getElementById('k-filter-active').classList.toggle('active',f==='active');document.getElementById('k-filter-archived').classList.toggle('active',f==='archived');renderK();}

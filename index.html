@@ -142,7 +142,7 @@ input[type=checkbox]{width:auto;accent-color:var(--purple);}
       </select></div>
       <div id="u-activiteit-custom-wrap" style="display:none"><label>Activiteit (vrij)</label><input type="text" id="u-activiteit-custom" placeholder="Bijv. Opleiding"></div>
       <div><label>Facturabel</label><div style="display:flex;align-items:center;gap:8px;height:35px;"><input type="checkbox" id="u-facturabel" checked style="width:16px;height:16px;"> <span style="font-size:13px;">Ja</span></div></div>
-      <div><label>Uren (decimaal)</label><input type="number" id="u-uren" placeholder="1.5" step="0.0833" min="0" oninput="uCalc()"></div>
+      <div><label>Uren (HH:MM)</label><input type="text" id="u-uren" placeholder="1:30" maxlength="5" oninput="uFormatHHMM(this);uCalc()"></div>
     </div>
     <div class="fr c3">
       <div><label>Omschrijving</label><input type="text" id="u-omschrijving" placeholder="Wat heb je gedaan?"></div>
@@ -184,13 +184,17 @@ input[type=checkbox]{width:auto;accent-color:var(--purple);}
         <input type="checkbox" id="ov-fac-only" onchange="renderOv()" style="width:14px;height:14px;"> Alleen facturabel
       </label>
     </div>
-    <table><thead><tr><th>Datum</th><th>Klant</th><th>Project</th><th>Activiteit</th><th>Omschrijving</th><th style="text-align:right">HH:MM</th><th style="text-align:right">Decimaal</th><th style="text-align:right">Bedrag</th><th>Status</th><th></th></tr></thead>
+    <table><thead><tr>
+      <th style="width:28px;"><input type="checkbox" id="ov-sel-all" title="Alles selecteren" onchange="ovSelAll(this)" style="width:14px;height:14px;accent-color:var(--purple);"></th>
+      <th>Datum</th><th>Klant</th><th>Project</th><th>Activiteit</th><th>Omschrijving</th><th style="text-align:right">HH:MM</th><th style="text-align:right">Bedrag</th><th>Status</th><th></th>
+    </tr></thead>
     <tbody id="ov-tbody"></tbody></table>
-    <div class="btn-row" style="margin-top:1rem;">
+    <div id="ov-selectie-info" style="font-size:12px;color:var(--purple);padding:6px 0;display:none;"></div>
+    <div class="btn-row" style="margin-top:0.5rem;">
       <button class="btn" onclick="exportCSV()">↓ CSV</button>
       <button class="btn" onclick="markGefactureerd()" title="Markeer gefilterde factureerbare uren als gefactureerd">✓ Markeer gefactureerd</button>
       <button class="btn" onclick="downloadUrenspec()">↓ Urenspecificatie PDF</button>
-      <button class="btn btn-primary" onclick="showPage('factuur')">Factuur maken →</button>
+      <button class="btn btn-primary" onclick="factureerSelectie()">Factuur maken met selectie →</button>
     </div>
   </div>
 </div>
@@ -219,10 +223,16 @@ input[type=checkbox]{width:auto;accent-color:var(--purple);}
         </div>
       </div>
       <!-- Uren-filter: enkel bij uren-factuur -->
-      <div id="f-uren-filter" class="fr c3" style="margin-bottom:10px;">
-        <div><label>Uren van</label><input type="date" id="f-van" onchange="renderFac()"></div>
-        <div><label>Uren tot en met</label><input type="date" id="f-tot" onchange="renderFac()"></div>
-        <div><label>Periode label (op factuur)</label><input type="text" id="f-periode" placeholder="bv. oktober 2026" oninput="renderFac()"></div>
+      <div id="f-uren-filter" style="margin-bottom:10px;">
+        <div id="f-selectie-banner" style="display:none;background:var(--purple-l);border:1px solid var(--purple);border-radius:var(--r);padding:8px 12px;font-size:12px;color:var(--purple);margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;">
+          <span id="f-selectie-tekst"></span>
+          <button class="btn btn-sm" onclick="clearFacSelectie()" style="font-size:11px;padding:3px 8px;">✕ Wis selectie</button>
+        </div>
+        <div class="fr c3" id="f-datumfilter">
+          <div><label>Uren van</label><input type="date" id="f-van" onchange="clearFacSelectie();renderFac()"></div>
+          <div><label>Uren tot en met</label><input type="date" id="f-tot" onchange="clearFacSelectie();renderFac()"></div>
+          <div><label>Periode label (op factuur)</label><input type="text" id="f-periode" placeholder="bv. oktober 2026" oninput="renderFac()"></div>
+        </div>
       </div>
       <div class="fr c4">
         <div><label>Factuurnummer</label><input type="text" id="f-nummer" oninput="renderFac()"></div>
@@ -581,11 +591,26 @@ function getActiviteit(){
   if(v==='__custom')return document.getElementById('u-activiteit-custom').value.trim();
   return v;
 }
+function parseHHMM(val){
+  // Accepteert: "1:30", "1.5", "90" (minuten als getal zonder dubbele punt → behandel als decimaal uren)
+  if(!val)return 0;
+  val=val.trim();
+  if(val.includes(':')){
+    const [h,m]=val.split(':');
+    return (parseInt(h)||0)+(parseInt(m)||0)/60;
+  }
+  return parseFloat(val)||0;
+}
+function uFormatHHMM(inp){
+  // Auto-format: als gebruiker een cijfer + dubbele punt typt, laat door; anders niet ingrijpen
+  let v=inp.value.replace(/[^0-9:]/g,'');
+  inp.value=v;
+}
 function uCalc(){
-  const u=parseFloat(document.getElementById('u-uren').value)||0;
+  const u=parseHHMM(document.getElementById('u-uren').value);
   const t=parseFloat(document.getElementById('u-tarief').value)||0;
   const fac=document.getElementById('u-facturabel').checked;
-  document.getElementById('u-totaal').value=u&&t?(fac?'':'[niet fac] ')+eur(u*t)+' — '+fmtDec(u)+' u':'';
+  document.getElementById('u-totaal').value=u&&t?(fac?'':'[niet fac] ')+eur(u*t)+' — '+fmt(u):'';
 }
 function uToevoegen(){
   const cid=parseInt(document.getElementById('u-klant').value);
@@ -593,7 +618,7 @@ function uToevoegen(){
   const datum=document.getElementById('u-datum').value;
   const activiteit=getActiviteit();
   const omschrijving=document.getElementById('u-omschrijving').value.trim();
-  const uren=parseFloat(document.getElementById('u-uren').value);
+  const uren=parseHHMM(document.getElementById('u-uren').value);
   const tarief=parseFloat(document.getElementById('u-tarief').value);
   const facturabel=document.getElementById('u-facturabel').checked;
   if(!cid||!datum||!uren||!tarief){alert('Vul klant, datum, uren en tarief in.');return;}
@@ -667,19 +692,81 @@ function renderOv(){
   document.getElementById('ov-bedrag').textContent=eur(tb2);
   document.getElementById('ov-klanten').textContent=new Set(en.map(e=>e.clientId)).size;
   const tbody=document.getElementById('ov-tbody');
-  if(!en.length){tbody.innerHTML='<tr><td colspan="8" class="empty">Geen registraties</td></tr>';return;}
-  tbody.innerHTML=en.map(e=>{const c=gc(e.clientId);const fac=e.facturabel!==false;return`<tr class="${fac?'':'niet-fac'}">
+  if(!en.length){tbody.innerHTML='<tr><td colspan="10" class="empty">Geen registraties</td></tr>';return;}
+  tbody.innerHTML=en.map(e=>{const c=gc(e.clientId);const fac=e.facturabel!==false;const canSel=fac&&!e.gefactureerd;return`<tr class="${fac?'':'niet-fac'}">
+    <td><input type="checkbox" class="ov-sel" data-id="${e.id}" ${canSel?'':'disabled'} onchange="ovSelChange()" style="width:14px;height:14px;accent-color:var(--purple);${canSel?'':'opacity:0.3;'}"></td>
     <td style="color:var(--text2);white-space:nowrap">${fmtDate(e.datum)}</td>
     <td><span class="badge ${c?.color||'c0'}">${c?.naam||'?'}</span></td>
     <td style="color:var(--text2);font-size:12px">${e.project||'—'}</td>
     <td>${e.activiteit||'—'}</td>
     <td style="color:var(--text2)">${e.omschrijving||'—'}</td>
     <td style="text-align:right;font-weight:500;white-space:nowrap">${fmt(e.uren)}</td>
-    <td style="text-align:right;color:var(--text2)">${fmtDec(e.uren)}</td>
     <td style="text-align:right">${fac?eur(e.uren*e.tarief):'<span style="color:var(--text3)">—</span>'}</td>
     <td>${e.gefactureerd?'<span class="tag" style="background:#DCFCE7;color:#15803D">✓ gefact.</span>':fac?'<span class="tag">open</span>':''}</td>
     <td><button class="btn btn-sm btn-danger" onclick="delEntry(${e.id})">✕</button></td>
   </tr>`;}).join('');
+  ovSelChange();
+}
+function ovSelAll(cb){
+  document.querySelectorAll('.ov-sel:not(:disabled)').forEach(c=>c.checked=cb.checked);
+  ovSelChange();
+}
+function ovSelChange(){
+  const sel=Array.from(document.querySelectorAll('.ov-sel:checked'));
+  const info=document.getElementById('ov-selectie-info');
+  const allCb=document.getElementById('ov-sel-all');
+  const all=document.querySelectorAll('.ov-sel:not(:disabled)');
+  if(allCb)allCb.checked=all.length>0&&sel.length===all.length;
+  if(!info)return;
+  if(!sel.length){info.style.display='none';return;}
+  const ids=sel.map(c=>parseInt(c.dataset.id));
+  const entries=ids.map(id=>db.entries.find(e=>e.id===id)).filter(Boolean);
+  const totU=entries.reduce((s,e)=>s+e.uren,0);
+  const totB=entries.reduce((s,e)=>s+e.uren*e.tarief,0);
+  info.style.display='';
+  info.textContent=sel.length+' uren geselecteerd — '+fmt(totU)+' — '+eur(totB);
+}
+function getSelectedIds(){
+  return Array.from(document.querySelectorAll('.ov-sel:checked')).map(c=>parseInt(c.dataset.id));
+}
+function clearFacSelectie(){
+  window._facSelectieIds=null;
+  window._facSelectieCid=null;
+  const b=document.getElementById('f-selectie-banner');
+  const df=document.getElementById('f-datumfilter');
+  if(b)b.style.display='none';
+  if(df)df.style.display='';
+  renderFac();
+}
+function factureerSelectie(){
+  const ids=getSelectedIds();
+  if(!ids.length){alert('Selecteer eerst uren die je wil factureren.');return;}
+  const entries=ids.map(id=>db.entries.find(e=>e.id===id)).filter(Boolean);
+  const clientIds=[...new Set(entries.map(e=>e.clientId))];
+  if(clientIds.length>1){alert('Je hebt uren van meerdere klanten geselecteerd. Kies uren van één klant.');return;}
+  const cid=clientIds[0];
+  window._facSelectieIds=ids;
+  window._facSelectieCid=cid;
+  showPage('factuur');
+  setTimeout(()=>{
+    const fkSel=document.getElementById('f-klant');
+    if(fkSel){fkSel.value=cid;}
+    window._facSelectieCid=cid; // herstel na fKlantChange reset
+    window._facSelectieIds=ids;
+    const radioUren=document.querySelector('input[name="factype"][value="uren"]');
+    if(radioUren){radioUren.checked=true;}
+    facTypeChange();
+    // Toon banner, verberg datumfilter
+    const b=document.getElementById('f-selectie-banner');
+    const df=document.getElementById('f-datumfilter');
+    const t=document.getElementById('f-selectie-tekst');
+    const totU=entries.reduce((s,e)=>s+e.uren,0);
+    const totB=entries.reduce((s,e)=>s+e.uren*e.tarief,0);
+    if(b){b.style.display='flex';}
+    if(df){df.style.display='none';}
+    if(t){t.textContent=ids.length+' uren geselecteerd uit overzicht — '+fmt(totU)+' — '+eur(totB);}
+    renderFac();
+  },80);
 }
 function exportCSV(){
   const rows=[['Datum','Klant','Klantnr','Project','Activiteit','Omschrijving','Facturabel','Uren','Tarief','Bedrag']];
@@ -692,29 +779,34 @@ function exportCSV(){
 function pdfHeader(doc,s){
   const W=210,ml=20,mr=20;
   // Logo: horizontale lijnen met donkergroene cirkel in het midden
-  const cy=18;
-  const cx=W/2;
-  doc.setDrawColor(180);doc.setLineWidth(0.3);
-  doc.line(ml,cy,cx-9,cy);
-  // Groene cirkel
-  doc.setFillColor(27,79,64);doc.circle(cx,cy,8,'F');
-  // "Lex/IT" als één tekst op één lijn in de cirkel
-  doc.setFontSize(6);doc.setTextColor(255,255,255);doc.setFont(undefined,'bold');
-  doc.text('Lex/IT',cx,cy+0.5,{align:'center'});
-  // Subtekst onder de tekst
-  doc.setFontSize(4);doc.setFont(undefined,'normal');
-  doc.text('since 2017',cx,cy+3.5,{align:'center'});
-  doc.setDrawColor(180);doc.setLineWidth(0.3);
-  doc.line(cx+9,cy,W-mr,cy);
-  // Afzender rechtsboven: naam, adres, stad, BTW (geen tel/email)
+  // Layout: afzender rechts bovenaan, cirkel+lijn eronder gecentreerd
+  // Stap 1: afzender rechtsboven
   const lines=[];
-  if(s.naam)lines.push({t:s.naam,sz:9});
-  if(s.adres)lines.push({t:s.adres,sz:9});
-  if(s.plaats)lines.push({t:s.plaats,sz:9});
-  if(s.btw)lines.push({t:s.btw,sz:9});
-  let ay=10;
-  lines.forEach(l=>{doc.setFontSize(l.sz);doc.setFont(undefined,'normal');doc.setTextColor(50);doc.text(l.t,W-mr,ay,{align:'right'});ay+=5;});
-  return Math.max(ay+6,38);
+  if(s.naam)lines.push({t:s.naam,sz:9,bold:true});
+  if(s.adres)lines.push({t:s.adres,sz:8.5});
+  if(s.plaats)lines.push({t:s.plaats,sz:8.5});
+  if(s.btw)lines.push({t:s.btw,sz:8.5});
+  let ay=12;
+  lines.forEach(l=>{
+    doc.setFontSize(l.sz);
+    doc.setFont(undefined,l.bold?'bold':'normal');
+    doc.setTextColor(40);
+    doc.text(l.t,W-mr,ay,{align:'right'});
+    ay+=5;
+  });
+  // Stap 2: cirkel + horizontale lijnen onder de afzender, op vaste y
+  const cy=38;
+  const cx=W/2;
+  const cr=10;
+  doc.setDrawColor(180);doc.setLineWidth(0.3);
+  doc.line(ml,cy,cx-cr-1,cy);
+  doc.setFillColor(27,79,64);doc.circle(cx,cy,cr,'F');
+  doc.setFontSize(8);doc.setTextColor(255,255,255);doc.setFont(undefined,'bold');
+  doc.text('Lex/IT',cx,cy+0.5,{align:'center'});
+  doc.setFontSize(5);doc.setFont(undefined,'normal');
+  doc.text('since 2017',cx,cy+4,{align:'center'});
+  doc.line(cx+cr+1,cy,W-mr,cy);
+  return cy+cr+8;
 }
 
 // URENSPECIFICATIE PDF
@@ -815,7 +907,7 @@ function calcVervaldag(){
   if(d){const dt=new Date(d);dt.setDate(dt.getDate()+t);document.getElementById('f-vervaldag').value=dt.toISOString().slice(0,10);}
   renderFac();
 }
-function fKlantChange(){renderFac();}
+function fKlantChange(){window._facSelectieIds=null;window._facSelectieCid=null;renderFac();}
 function addVrij(){
   const o=document.getElementById('vr-omschr').value.trim();
   const b=parseFloat(document.getElementById('vr-bedrag').value);
@@ -847,9 +939,15 @@ function getFacData(){
   const isUren=getFacType()==='uren';
   let urenRegels=[];
   if(isUren&&cid){
-    urenRegels=db.entries.filter(e=>e.clientId===cid&&e.facturabel!==false);
-    if(van)urenRegels=urenRegels.filter(e=>e.datum>=van);
-    if(tot)urenRegels=urenRegels.filter(e=>e.datum<=tot);
+    // Gebruik handmatige selectie als die beschikbaar is (vanuit Overzicht)
+    const selIds=window._facSelectieCid===cid?window._facSelectieIds:null;
+    if(selIds&&selIds.length){
+      urenRegels=db.entries.filter(e=>selIds.includes(e.id)&&e.facturabel!==false);
+    }else{
+      urenRegels=db.entries.filter(e=>e.clientId===cid&&e.facturabel!==false);
+      if(van)urenRegels=urenRegels.filter(e=>e.datum>=van);
+      if(tot)urenRegels=urenRegels.filter(e=>e.datum<=tot);
+    }
     urenRegels.sort((a,b)=>a.datum.localeCompare(b.datum));
   }
   const allRegels=[
@@ -992,11 +1090,11 @@ function buildFactuurPDF(d){
   ];
   trows.forEach(r=>{
     if(r[2]){
-      // Lijn boven totaalregel, met genoeg ruimte zodat het niet doorgestreept lijkt
-      y+=3;
-      doc.setDrawColor(80);doc.setLineWidth(0.3);doc.line(lx,y-1.5,vx,y-1.5);
-      y+=4;
-      doc.setFontSize(10);doc.setFont(undefined,'normal');doc.setTextColor(20);
+      // Lijn duidelijk bóven de tekst: eerst ruimte, lijn, daarna meer ruimte, dan tekst
+      y+=5;
+      doc.setDrawColor(80);doc.setLineWidth(0.4);doc.line(lx,y,vx,y);
+      y+=6;
+      doc.setFontSize(10);doc.setFont(undefined,'bold');doc.setTextColor(20);
       doc.text(r[0],lx,y);
       doc.text(r[1],vx,y,{align:'right'});
       y+=7;

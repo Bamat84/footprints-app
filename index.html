@@ -498,7 +498,7 @@ function fmtDateSlash(iso){if(!iso)return'—';const[y,m,d]=iso.split('-');retur
 function eur(n){return'€ '+n.toLocaleString('nl-BE',{minimumFractionDigits:2,maximumFractionDigits:2});}
 function td(){return new Date().toISOString().slice(0,10);}
 function tm(){return new Date().toISOString().slice(0,7);}
-function nextFacNr(){const n=db.settings.facnr||'2026-001';const m=n.match(/^(.*?)(\d+)$/);return m?m[1]+String(parseInt(m[2])+1).padStart(m[2].length,'0'):n;}
+function nextFacNr(){const n=db.settings.facnr||'2026-001';const cy=new Date().getFullYear();const m=n.match(/^(\d{4})(\D*)(\d+)$/);if(m){const ny=parseInt(m[1]);if(ny!==cy)return String(cy)+'01';return String(cy)+m[2]+String(parseInt(m[3])+1).padStart(m[3].length,'0');}return n;}
 
 // Pages
 function showPage(name){

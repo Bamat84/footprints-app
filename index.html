@@ -68,11 +68,6 @@ input[type=checkbox]{width:auto;accent-color:var(--purple);}
   <div style="font-size:28px;">⏳</div>
   <div style="font-size:15px;color:#1B4F40;font-weight:500;">Data laden uit de cloud...</div>
 </div>
-<div id="backup-banner" style="display:none;background:#FEF3C7;border-bottom:2px solid #F59E0B;padding:10px 20px;font-size:13px;color:#78350F;display:flex;align-items:center;gap:12px;">
-  <span>⚠️ <strong id="backup-banner-msg"></strong></span>
-  <button class="btn btn-sm" onclick="exportBackup();dismissBanner()" style="background:#F59E0B;color:#fff;border-color:#D97706;">↓ Nu exporteren</button>
-  <button class="btn btn-sm" onclick="dismissBanner()" style="margin-left:auto;">Later</button>
-</div>
 <div id="vervallen-banner" style="display:none;background:#FEE2E2;border-bottom:2px solid #DC2626;padding:10px 20px;font-size:13px;color:#7F1D1D;align-items:center;gap:12px;">
   <span>🔔 <strong id="vervallen-banner-msg"></strong></span>
   <button class="btn btn-sm" onclick="naarFacturen('vervallen')" style="background:#DC2626;color:#fff;border-color:#B91C1C;">Bekijk ze</button>
@@ -1981,7 +1976,6 @@ function exportBackup(){
   a.href='data:application/json;charset=utf-8,'+encodeURIComponent(data);
   a.download='footprints-backup-'+date+'.json';
   a.click();
-  document.getElementById('backup-banner').style.display='none';
 }
 function importBackup(evt){
   const file=evt.target.files[0];
@@ -2015,8 +2009,6 @@ function markGefactureerd(){
 }
 
 // BACKUP BANNER
-function checkBackupBanner(){/* data is in Supabase cloud — no local backup needed */}
-function dismissBanner(){document.getElementById('backup-banner').style.display='none';}
 
 // ===== BALK VOOR VERVALLEN FACTUREN =====
 // Verschijnt bij het openen van de app als er iets te laat is. Eén keer per
@@ -2546,7 +2538,7 @@ async function startup(){
   document.getElementById('u-activiteit').addEventListener('change',uActChange);
   document.getElementById('u-facturabel').addEventListener('change',uCalc);
   await initFromSupabase();
-  fillSels();renderU();loadSett();renderDash();checkBackupBanner();checkVervallenBanner();
+  fillSels();renderU();loadSett();renderDash();checkVervallenBanner();
 }
 startup();
 </script>

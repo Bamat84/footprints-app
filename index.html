@@ -278,6 +278,7 @@ input[type=checkbox]{width:auto;accent-color:var(--purple);}
       <div class="fr c3">
         <div><label>Vervaldatum</label><input type="date" id="f-vervaldag" oninput="renderFac()"></div>
         <div><label>Kenmerk / mededeling</label><input type="text" id="f-kenmerk" placeholder="Optioneel" oninput="renderFac()"></div>
+        <div><label>Omschrijving urenregel</label><input type="text" id="f-uromschr" placeholder="Consultancy diensten" oninput="renderFac()"></div>
         <div><label>BTW %</label><input type="number" id="f-btw" value="21" min="0" max="100" onchange="renderFac()"></div>
       </div>
     </div>
@@ -783,7 +784,7 @@ async function saveFactuur(f){
     kenmerk:f.kenmerk||null, totaal:f.totaal||0,
     subtotaal:f.subtotaal||0, btw_bedrag:f.btwBedrag||0,
     btw_pct:f.btwPct||0, extra:f.extra||null,
-    regels:f.regels||null, bijlagen:f.bijlagen||null,
+    regels:f.regels||null, bijlagen:f.bijlagen||null, ur_omschr:f.urOmschr||null,
     periode:f.periode||null,
     verzonden:f.verzonden||false, verzonden_op:f.verzondenOp||null,
     betaald:f.betaald||false, betaald_op:f.betaaldOp||null,
@@ -796,9 +797,9 @@ async function saveFactuur(f){
     // op de oude kolommen in plaats van helemaal te mislukken.
     if(!/PGRST204|schema cache|column/i.test(String(e&&e.message||e)))throw e;
     const basis=Object.assign({},row);
-    delete basis.regels; delete basis.bijlagen;
+    delete basis.regels; delete basis.bijlagen; delete basis.ur_omschr;
     await sbUpsert('facturen',[basis]);
-    console.warn('De facturen-tabel mist de kolommen regels of bijlagen. Die zijn niet bewaard — voeg de kolommen toe in Supabase.');
+    console.warn('De facturen-tabel mist de kolommen regels, bijlagen of ur_omschr. Die zijn niet bewaard — voeg de kolommen toe in Supabase.');
   }
 }
 function gc(id){return db.clients.find(c=>c.id===id);}
@@ -814,7 +815,7 @@ function eur(n){return'€ '+n.toLocaleString('nl-BE',{minimumFractionDigits:2,m
 function pdfNum(n){return(Number(n)||0).toLocaleString('nl-BE',{minimumFractionDigits:2,maximumFractionDigits:2});}
 function td(){return new Date().toISOString().slice(0,10);}
 function tm(){return new Date().toISOString().slice(0,7);}
-function nextFacNr(){const n=db.settings.facnr||'2026-001';const cy=new Date().getFullYear();const m=n.match(/^(\d{4})(\D*)(\d+)$/);if(m){const ny=parseInt(m[1]);if(ny!==cy)return String(cy)+'01';return String(cy)+m[2]+String(parseInt(m[3])+1).padStart(m[3].length,'0');}return n;}
+function nextFacNr(){return volgendNaNummer(db.settings.facnr||'2026-001');}
 
 // Pages
 function showPage(name){
@@ -1277,7 +1278,10 @@ function initFac(){
   fillSels();
   const t=td();
   if(!document.getElementById('f-datum').value)document.getElementById('f-datum').value=t;
-  if(!document.getElementById('f-nummer').value)document.getElementById('f-nummer').value=db.settings.facnr||'2026-001';
+  // Een nummer dat al in gebruik is wordt vervangen door het volgende vrije.
+  const nrVeld=document.getElementById('f-nummer');
+  const bezet=db.facturen.some(f=>f.nummer===nrVeld.value);
+  if(!nrVeld.value||bezet)nrVeld.value=voorgesteldFacNr();
   document.getElementById('ok-datum').value=t;
   // standaard van/tot: begin en einde huidige maand
   if(!document.getElementById('f-van').value){
@@ -1317,6 +1321,30 @@ function btwVermelding(c){
   if(c.btwtekst)return c.btwtekst;
   const r=BTW_REGIMES[c.btwregime||''];
   return r?r.tekst:'';
+}
+// De omschrijving van de samengevatte urenregel op de factuur.
+const STANDAARD_UROMSCHR='Consultancy diensten';
+function urenOmschrijving(){
+  const el=document.getElementById('f-uromschr');
+  return(el&&el.value.trim())||STANDAARD_UROMSCHR;
+}
+// Het volgende nummer na een gegeven factuurnummer, met jaarwissel.
+function volgendNaNummer(n){
+  const cy=new Date().getFullYear();
+  const m=String(n||'').match(/^(\d{4})(\D*)(\d+)$/);
+  if(!m)return n;
+  if(parseInt(m[1])!==cy)return String(cy)+'01';
+  return String(cy)+m[2]+String(parseInt(m[3])+1).padStart(m[3].length,'0');
+}
+// Het voorgestelde nummer is de bewaarde teller, maar nooit een nummer dat al
+// in gebruik is. Zo loopt de nummering door, ook als de teller achterop raakt.
+function voorgesteldFacNr(){
+  const teller=db.settings.facnr||'2026-001';
+  const gewoon=db.facturen.filter(f=>!f.creditnota);
+  if(!gewoon.length)return teller;
+  const hoogste=gewoon.reduce((m,f)=>facNrWaarde(f.nummer)>facNrWaarde(m.nummer)?f:m);
+  if(facNrWaarde(teller)>facNrWaarde(hoogste.nummer))return teller;
+  return volgendNaNummer(hoogste.nummer);
 }
 function fKlantChange(){
   window._facSelectieIds=null;window._facSelectieCid=null;
@@ -1377,7 +1405,7 @@ function getFacData(){
   ];
   const subtotaal=allRegels.reduce((s,r)=>s+r.bedrag,0);
   const btwBedrag=subtotaal*btwPct/100;
-  return{cid,c,periode,van,tot,btwPct,nummer,po,datum,vervaldag,kenmerk,allRegels,subtotaal,btwBedrag,totaal:subtotaal+btwBedrag};
+  return{cid,c,periode,van,tot,btwPct,nummer,po,datum,vervaldag,kenmerk,urOmschr:urenOmschrijving(),allRegels,subtotaal,btwBedrag,totaal:subtotaal+btwBedrag};
 }
 function renderFac(){
   const{c,btwPct,nummer,po,datum,vervaldag,kenmerk,allRegels,subtotaal,btwBedrag,totaal}=getFacData();
@@ -1386,7 +1414,6 @@ function renderFac(){
     `<strong>${s.naam}</strong><br>${s.adres}<br>${s.plaats}`+
     (s.btw?`<br>${s.btw}`:'')+
     (s.iban?`<br>IBAN: ${s.iban}`:'')+
-    (s.bic?` — BIC: ${s.bic}`:'')+
     (s.email?`<br>${s.email}`:'')+
     (s.tel?`<br>${s.tel}`:'');
   if(c){
@@ -1412,7 +1439,7 @@ function renderFac(){
     const totB=urenRegelsPreview.reduce((s,r)=>s+r.bedrag,0);
     const tarief=urenRegelsPreview[0].prijs;
     const periodeVal=document.getElementById('f-periode')?.value||'';
-    const omschr='Consultancy diensten'+(periodeVal?' — '+periodeVal:'');
+    const omschr=urenOmschrijving()+(periodeVal?' — '+periodeVal:'');
     previewRows.push({datum:null,omschrijving:omschr,type:'uren',aantal:totU,prijs:tarief,bedrag:totB,isSummary:true});
   }
   extraRegels.forEach((r,i)=>previewRows.push({...r,extraIdx:i}));
@@ -1491,7 +1518,7 @@ function buildFactuurPDF(d,externalDoc,returnDoc){
     const totU=urenRegelsDoc.reduce((s,r)=>s+r.aantal,0);
     const totB=urenRegelsDoc.reduce((s,r)=>s+r.bedrag,0);
     const tarief=urenRegelsDoc[0].prijs;
-    const omschr='Consultancy diensten'+(d.periode?' — '+d.periode:'');
+    const omschr=(d.urOmschr||STANDAARD_UROMSCHR)+(d.periode?' — '+d.periode:'');
     tableRows.push([omschr,fmt(totU),pdfNum(tarief),pdfNum(totB),d.btwPct+'%']);
   }
   extraRegelsDoc.forEach(r=>tableRows.push([r.omschrijving,'1','',pdfNum(r.bedrag),d.btwPct+'%']));
@@ -1615,10 +1642,15 @@ function buildFactuurPDF(d,externalDoc,returnDoc){
 function downloadFactuurPDF(){const fd=getFacData();if(!fd.c){alert('Kies eerst een klant.');return;}buildFactuurPDF({...fd,settings:db.settings});}
 async function opslaanFac(){
   const fd=getFacData();if(!fd.c){alert('Kies eerst een klant.');return;}
+  // Twee facturen met hetzelfde nummer is een boekhoudkundig probleem.
+  if(db.facturen.some(f=>f.nummer===fd.nummer)){
+    alert('Factuurnummer '+fd.nummer+' bestaat al.\n\nPas het nummer aan voor je opslaat.');
+    return;
+  }
   const periodeLabel=document.getElementById('f-periode').value||(fd.van&&fd.tot?fd.van.slice(0,7):'');
-  const newFac={id:db.nextId++,nummer:fd.nummer,po:fd.po,klant:fd.c.naam,klantId:fd.cid,datum:fd.datum,vervaldag:fd.vervaldag,kenmerk:fd.kenmerk,totaal:fd.totaal,subtotaal:fd.subtotaal,btwBedrag:fd.btwBedrag,btwPct:fd.btwPct,extra:[...facExtra],regels:fd.allRegels.map(r=>({...r})),periode:periodeLabel};
+  const newFac={id:db.nextId++,nummer:fd.nummer,po:fd.po,klant:fd.c.naam,klantId:fd.cid,datum:fd.datum,vervaldag:fd.vervaldag,kenmerk:fd.kenmerk,totaal:fd.totaal,subtotaal:fd.subtotaal,btwBedrag:fd.btwBedrag,btwPct:fd.btwPct,extra:[...facExtra],regels:fd.allRegels.map(r=>({...r})),urOmschr:fd.urOmschr,periode:periodeLabel};
   db.facturen.unshift(newFac);
-  db.settings.facnr=nextFacNr();
+  db.settings.facnr=voorgesteldFacNr();
   document.getElementById('f-nummer').value=db.settings.facnr;
   alert('Factuur '+fd.nummer+' opgeslagen!');
   facExtra=[];renderFac();
@@ -1833,7 +1865,7 @@ function herdownload(id){
   const f=db.facturen.find(x=>x.id===id);if(!f)return;
   const c=gc(f.klantId)||{naam:f.klant,nr:'',adres:'',plaats:'',btw:''};
   const allRegels=facRegels(f,false);
-  buildFactuurPDF({c,btwPct:f.btwPct||21,nummer:f.nummer,po:f.po||'',datum:f.datum,vervaldag:f.vervaldag||'',kenmerk:f.kenmerk||'',allRegels,subtotaal:f.subtotaal,btwBedrag:f.btwBedrag,totaal:f.totaal,settings:db.settings});
+  buildFactuurPDF({c,btwPct:f.btwPct||21,nummer:f.nummer,po:f.po||'',datum:f.datum,vervaldag:f.vervaldag||'',kenmerk:f.kenmerk||'',allRegels,subtotaal:f.subtotaal,btwBedrag:f.btwBedrag,totaal:f.totaal,urOmschr:f.urOmschr||'',settings:db.settings});
 }
 // Een factuurnummer vergelijkbaar maken: 2026027 wordt 2026027, CN-2026-003
 // wordt 2026003. Zo weten we of een verwijderd nummer het laatste was.
@@ -2200,6 +2232,7 @@ function sbFactuurToLocal(r){
     totaal:parseFloat(r.totaal)||0,subtotaal:parseFloat(r.subtotaal)||0,
     btwBedrag:parseFloat(r.btw_bedrag)||0,btwPct:parseFloat(r.btw_pct)||0,
     extra:r.extra,regels:r.regels||null,bijlagen:r.bijlagen||[],
+    urOmschr:r.ur_omschr||'',
     periode:r.periode||'',
     verzonden:r.verzonden||false,verzondenOp:r.verzonden_op,
     betaald:r.betaald||false,betaaldOp:r.betaald_op,
@@ -2411,7 +2444,7 @@ async function fdpMailGraph(){
 function herdownloadDoc(f,externalDoc){
   const c=gc(f.klantId)||{naam:f.klant,nr:'',adres:'',plaats:'',btw:''};
   const allRegels=facRegels(f,true);
-  buildFactuurPDF({c,btwPct:f.btwPct||21,nummer:f.nummer,po:f.po||'',datum:f.datum,vervaldag:f.vervaldag||'',kenmerk:f.kenmerk||'',allRegels,subtotaal:f.subtotaal,btwBedrag:f.btwBedrag,totaal:f.totaal,periode:f.periode||'',settings:db.settings},externalDoc,!!externalDoc);
+  buildFactuurPDF({c,btwPct:f.btwPct||21,nummer:f.nummer,po:f.po||'',datum:f.datum,vervaldag:f.vervaldag||'',kenmerk:f.kenmerk||'',allRegels,subtotaal:f.subtotaal,btwBedrag:f.btwBedrag,totaal:f.totaal,periode:f.periode||'',urOmschr:f.urOmschr||'',settings:db.settings},externalDoc,!!externalDoc);
 }
 
 async function fdpAddBijlage(input){

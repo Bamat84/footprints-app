@@ -302,6 +302,59 @@ input[type=checkbox]{width:auto;accent-color:var(--purple);}
   </div>
 </div>
 
+<!-- FACTUUR DETAIL PANEEL -->
+<div id="fac-detail-overlay" onclick="closeFacDetail(event)" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.35);z-index:500;"></div>
+<div id="fac-detail-panel" style="display:none;position:fixed;top:0;right:0;width:520px;max-width:100vw;height:100vh;background:var(--bg);border-left:1px solid var(--border);z-index:501;overflow-y:auto;flex-direction:column;">
+  <div style="padding:1.25rem 1.5rem;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;background:var(--bg);z-index:2;">
+    <div>
+      <div style="font-size:16px;font-weight:600;" id="fdp-titel">Factuur</div>
+      <div id="fdp-badge" style="margin-top:4px;"></div>
+    </div>
+    <button onclick="closeFacDetailPanel()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text2);padding:4px 8px;">✕</button>
+  </div>
+  <div style="padding:1.25rem 1.5rem;">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:1.25rem;">
+      <div style="font-size:12px;color:var(--text2);">Klant</div><div style="font-size:13px;font-weight:500;" id="fdp-klant"></div>
+      <div style="font-size:12px;color:var(--text2);">Factuurdatum</div><div style="font-size:13px;" id="fdp-datum"></div>
+      <div style="font-size:12px;color:var(--text2);">Vervaldatum</div><div style="font-size:13px;" id="fdp-vervaldag"></div>
+      <div style="font-size:12px;color:var(--text2);">PO nummer</div><div style="font-size:13px;" id="fdp-po"></div>
+      <div style="font-size:12px;color:var(--text2);">Bedrag excl. BTW</div><div style="font-size:13px;" id="fdp-subtotaal"></div>
+      <div style="font-size:12px;color:var(--text2);">BTW</div><div style="font-size:13px;" id="fdp-btw"></div>
+      <div style="font-size:12px;color:var(--text2);">Totaal incl. BTW</div><div style="font-size:13px;font-weight:600;" id="fdp-totaal"></div>
+    </div>
+
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:1.25rem;">
+      <button class="btn btn-sm" id="fdp-btn-betaald" onclick="fdpToggleBetaald()"></button>
+      <button class="btn btn-sm" id="fdp-btn-verzonden" onclick="fdpToggleVerzonden()"></button>
+      <button class="btn btn-sm" onclick="fdpDownload()" title="Download factuur PDF">↓ PDF</button>
+      <button class="btn btn-sm" id="fdp-btn-mail" onclick="fdpMailGraph()" title="Mail via Outlook">✉ Mail</button>
+      <button class="btn btn-sm" onclick="fdpSamenvoegen()" title="Factuur + bijlagen samenvoegen tot 1 PDF">⊕ Samenvoegen</button>
+      <button class="btn btn-sm" onclick="fdpDuplicate()" title="Dupliceer">⧉</button>
+      <button class="btn btn-sm btn-danger" onclick="fdpDelete()" title="Verwijder">✕</button>
+    </div>
+
+    <div style="margin-bottom:1.25rem;">
+      <h2 style="margin-bottom:0.75rem;">Bijlagen</h2>
+      <div id="fdp-bijlagen-lijst" style="margin-bottom:0.75rem;"></div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <label class="btn btn-sm" style="cursor:pointer;margin:0;">
+          + Bijlage toevoegen
+          <input type="file" id="fdp-bijlage-input" multiple accept=".pdf,image/*" style="display:none;" onchange="fdpAddBijlage(this)">
+        </label>
+        <span style="font-size:11px;color:var(--text3);">PDF of afbeelding (bon, contract, …)</span>
+      </div>
+    </div>
+
+    <div>
+      <h2 style="margin-bottom:0.75rem;">Regeloverzicht</h2>
+      <table style="font-size:12px;">
+        <thead><tr><th>Omschrijving</th><th style="text-align:right">Bedrag</th></tr></thead>
+        <tbody id="fdp-regels"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
 <!-- KLANTEN -->
 <div class="page" id="page-klanten">
   <h1>Klanten & projecten</h1>
@@ -1287,7 +1340,7 @@ function renderFL(){
     const st=facStatus(f);
     const badge=`<span class="status-${st}">${facStatusLabel(st)}</span>`;
     return`<tr>
-      <td style="font-weight:500">${f.nummer}</td>
+      <td style="font-weight:500"><a href="#" onclick="openFacDetail(${f.id});return false;" style="color:var(--purple);text-decoration:none;">${f.nummer}</a></td>
       <td>${f.klant}</td>
       <td style="color:var(--text2)">${f.po||'—'}</td>
       <td style="color:var(--text2)">${f.datum?fmtDateSlash(f.datum):'—'}</td>
@@ -1688,6 +1741,240 @@ async function initFromSupabase(){
   }finally{
     if(loadingEl)loadingEl.style.display='none';
   }
+}
+
+// ===== FACTUUR DETAIL PANEEL =====
+let _fdpId=null;
+
+function openFacDetail(id){
+  const f=db.facturen.find(x=>x.id===id);if(!f)return;
+  _fdpId=id;
+  const st=facStatus(f);
+  document.getElementById('fdp-titel').textContent='Factuur '+f.nummer;
+  document.getElementById('fdp-badge').innerHTML=`<span class="status-${st}">${facStatusLabel(st)}</span>`;
+  document.getElementById('fdp-klant').textContent=f.klant||'—';
+  document.getElementById('fdp-datum').textContent=f.datum?fmtDateSlash(f.datum):'—';
+  document.getElementById('fdp-vervaldag').textContent=f.vervaldag?fmtDateSlash(f.vervaldag):'—';
+  document.getElementById('fdp-po').textContent=f.po||'—';
+  document.getElementById('fdp-subtotaal').textContent=eur(f.subtotaal||0);
+  document.getElementById('fdp-btw').textContent=eur(f.btwBedrag||0)+' ('+((f.btwPct)||21)+'%)';
+  document.getElementById('fdp-totaal').textContent=eur(f.totaal||0);
+
+  const btnB=document.getElementById('fdp-btn-betaald');
+  btnB.textContent=f.betaald?'↺ Heropenen':'✓ Betaald';
+  btnB.style.cssText=f.betaald?'':'background:#F0FDF4;border-color:#86EFAC;color:#15803D;';
+  const btnV=document.getElementById('fdp-btn-verzonden');
+  btnV.textContent=f.verzonden?'📧 Verzonden':'📤 Markeer verzonden';
+  btnV.style.cssText=f.verzonden?'':'background:#EFF6FF;color:#1D4ED8;border-color:#BFDBFE;';
+
+  // Regeloverzicht
+  const regels=f.extra||[];
+  const regelsHtml=regels.map(r=>`<tr><td>${r.omschrijving||'—'}</td><td style="text-align:right">${eur(r.bedrag)}</td></tr>`).join('');
+  document.getElementById('fdp-regels').innerHTML=regelsHtml||'<tr><td colspan="2" style="color:var(--text3);padding:8px 10px;">Geen extra regels (enkel uren)</td></tr>';
+
+  fdpRenderBijlagen(f);
+  document.getElementById('fac-detail-overlay').style.display='block';
+  const panel=document.getElementById('fac-detail-panel');
+  panel.style.display='flex';
+  panel.scrollTop=0;
+}
+
+function fdpRenderBijlagen(f){
+  const lijst=document.getElementById('fdp-bijlagen-lijst');
+  const bijlagen=f.bijlagen||[];
+  if(!bijlagen.length){lijst.innerHTML='<div style="font-size:12px;color:var(--text3);margin-bottom:4px;">Nog geen bijlagen</div>';return;}
+  lijst.innerHTML=bijlagen.map((b,i)=>`
+    <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);">
+      <span style="font-size:18px;">${b.type==='pdf'?'📄':'🖼'}</span>
+      <span style="font-size:13px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${b.naam}</span>
+      <button class="btn btn-sm" onclick="fdpDownloadBijlage(${i})" title="Download">↓</button>
+      <button class="btn btn-sm btn-danger" onclick="fdpDelBijlage(${i})" title="Verwijder">✕</button>
+    </div>`).join('');
+}
+
+function closeFacDetail(e){if(e.target===document.getElementById('fac-detail-overlay'))closeFacDetailPanel();}
+function closeFacDetailPanel(){
+  document.getElementById('fac-detail-overlay').style.display='none';
+  document.getElementById('fac-detail-panel').style.display='none';
+  _fdpId=null;
+}
+
+async function fdpToggleBetaald(){
+  if(!_fdpId)return;
+  await toggleBetaald(_fdpId);
+  openFacDetail(_fdpId);
+}
+async function fdpToggleVerzonden(){
+  if(!_fdpId)return;
+  await toggleVerzonden(_fdpId);
+  openFacDetail(_fdpId);
+}
+function fdpDownload(){if(_fdpId)herdownload(_fdpId);}
+function fdpDuplicate(){if(_fdpId){closeFacDetailPanel();dupliceerFac(_fdpId);}}
+async function fdpDelete(){if(_fdpId){closeFacDetailPanel();await delFac(_fdpId);}}
+
+async function fdpMailGraph(){
+  if(!_fdpId)return;
+  const f=db.facturen.find(x=>x.id===_fdpId);if(!f)return;
+  const c=gc(f.klantId)||{naam:f.klant,email:''};
+  // Hergebruik mailFactuur logica maar met opgeslagen factuurdata
+  const klantEmail=c.email;
+  if(!klantEmail){alert('Deze klant heeft geen e-mailadres.');return;}
+  const btn=document.getElementById('fdp-btn-mail');
+  const origText=btn.textContent;btn.textContent='⏳…';btn.disabled=true;
+  try{
+    const{jsPDF}=window.jspdf;
+    const tmpDoc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
+    herdownloadDoc(f,tmpDoc);
+    const pdfB64=tmpDoc.output('datauristring').split(',')[1];
+    const filename=f.nummer+'.pdf';
+    const token=await getGraphToken();
+    const subject='Factuur '+f.nummer+' — '+(db.settings.naam||'FootPrints SRL');
+    const bodyHtml=`<p>Beste ${c.naam||klantEmail},</p><p>In bijlage vindt u factuur ${f.nummer}.</p><p>Met vriendelijke groeten,<br>${db.settings.naam||'FootPrints SRL'}</p>`;
+    const attachments=[{
+      '@odata.type':'#microsoft.graph.fileAttachment',
+      name:filename,contentType:'application/pdf',contentBytes:pdfB64
+    }];
+    // Voeg bijlagen toe indien aanwezig
+    for(const b of (f.bijlagen||[])){
+      attachments.push({'@odata.type':'#microsoft.graph.fileAttachment',name:b.naam,contentType:b.mime||'application/octet-stream',contentBytes:b.data});
+    }
+    const resp=await fetch('https://graph.microsoft.com/v1.0/me/sendMail',{
+      method:'POST',
+      headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},
+      body:JSON.stringify({message:{subject,body:{contentType:'HTML',content:bodyHtml},toRecipients:[{emailAddress:{address:klantEmail,name:c.naam||klantEmail}}],attachments},saveToSentItems:true})
+    });
+    if(!resp.ok){const err=await resp.text();throw new Error(resp.status+' '+err);}
+    if(!f.verzonden){f.verzonden=true;f.verzondenOp=td();renderFL();saveFactuur(f).catch(e=>console.error(e));}
+    alert('✅ Factuur '+f.nummer+' verstuurd naar '+klantEmail+(f.bijlagen?.length?' (+ '+f.bijlagen.length+' bijlage(n))':''));
+    openFacDetail(_fdpId);
+  }catch(e){
+    if(e.message?.includes('401'))_graphToken=null;
+    alert('❌ Mail mislukt:\n'+e.message);
+  }finally{btn.textContent=origText;btn.disabled=false;}
+}
+
+function herdownloadDoc(f,externalDoc){
+  const c=gc(f.klantId)||{naam:f.klant,nr:'',adres:'',plaats:'',btw:''};
+  let urenRegels=db.entries.filter(e=>e.clientId===f.klantId&&e.facturabel!==false);
+  if(f.periode)urenRegels=urenRegels.filter(e=>e.datum.startsWith(f.periode));
+  const allRegels=[
+    ...urenRegels.map(e=>({type:'uren',datum:e.datum,omschrijving:e.omschrijving||'',activiteit:e.activiteit||'',project:e.project||'',aantal:e.uren,prijs:e.tarief,bedrag:e.uren*e.tarief})),
+    ...(f.extra||[]).map(r=>({type:r.type,datum:r.datum,omschrijving:r.omschrijving,activiteit:'',project:'',aantal:1,prijs:r.bedrag,bedrag:r.bedrag}))
+  ];
+  buildFactuurPDF({c,btwPct:f.btwPct||21,nummer:f.nummer,po:f.po||'',datum:f.datum,vervaldag:f.vervaldag||'',kenmerk:f.kenmerk||'',allRegels,subtotaal:f.subtotaal,btwBedrag:f.btwBedrag,totaal:f.totaal,periode:f.periode||'',settings:db.settings},externalDoc,!!externalDoc);
+}
+
+async function fdpAddBijlage(input){
+  if(!_fdpId)return;
+  const f=db.facturen.find(x=>x.id===_fdpId);if(!f)return;
+  if(!f.bijlagen)f.bijlagen=[];
+  for(const file of input.files){
+    const isPdf=file.type==='application/pdf';
+    const isImg=file.type.startsWith('image/');
+    if(!isPdf&&!isImg){alert(file.name+' is geen PDF of afbeelding.');continue;}
+    const data=await new Promise((res,rej)=>{
+      const r=new FileReader();
+      r.onload=e=>res(e.target.result.split(',')[1]);
+      r.onerror=rej;
+      r.readAsDataURL(file);
+    });
+    f.bijlagen.push({naam:file.name,type:isPdf?'pdf':'img',mime:file.type,data});
+  }
+  input.value='';
+  fdpRenderBijlagen(f);
+  try{await saveFactuur(f);}catch(e){console.error('SB save bijlage:',e);}
+}
+
+function fdpDownloadBijlage(idx){
+  if(!_fdpId)return;
+  const f=db.facturen.find(x=>x.id===_fdpId);if(!f)return;
+  const b=f.bijlagen?.[idx];if(!b)return;
+  const a=document.createElement('a');
+  a.href='data:'+b.mime+';base64,'+b.data;
+  a.download=b.naam;a.style.display='none';
+  document.body.appendChild(a);a.click();a.remove();
+}
+
+async function fdpDelBijlage(idx){
+  if(!_fdpId)return;
+  const f=db.facturen.find(x=>x.id===_fdpId);if(!f||!f.bijlagen)return;
+  if(!confirm('Bijlage "'+f.bijlagen[idx].naam+'" verwijderen?'))return;
+  f.bijlagen.splice(idx,1);
+  fdpRenderBijlagen(f);
+  try{await saveFactuur(f);}catch(e){console.error('SB save bijlage:',e);}
+}
+
+async function fdpSamenvoegen(){
+  if(!_fdpId)return;
+  const f=db.facturen.find(x=>x.id===_fdpId);if(!f)return;
+  const btn=document.querySelector('#fac-detail-panel button[onclick="fdpSamenvoegen()"]');
+  if(btn){btn.textContent='⏳…';btn.disabled=true;}
+  try{
+    // Laad pdf-lib dynamisch
+    if(!window.PDFLib){
+      await new Promise((res,rej)=>{
+        const s=document.createElement('script');
+        s.src='https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js';
+        s.onload=res;s.onerror=rej;
+        document.head.appendChild(s);
+      });
+    }
+    const{PDFDocument}=window.PDFLib;
+    const merged=await PDFDocument.create();
+
+    // 1. Factuur PDF genereren
+    const{jsPDF}=window.jspdf;
+    const facDoc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
+    herdownloadDoc(f,facDoc);
+    const facBytes=facDoc.output('arraybuffer');
+    const facPdf=await PDFDocument.load(facBytes);
+    const facPages=await merged.copyPages(facPdf,[...Array(facPdf.getPageCount()).keys()]);
+    facPages.forEach(p=>merged.addPage(p));
+
+    // 2. Bijlagen samenvoegen
+    const bijlagen=f.bijlagen||[];
+    for(const b of bijlagen){
+      const raw=base64ToArrayBuffer(b.data);
+      if(b.type==='pdf'){
+        try{
+          const bijPdf=await PDFDocument.load(raw);
+          const pages=await merged.copyPages(bijPdf,[...Array(bijPdf.getPageCount()).keys()]);
+          pages.forEach(p=>merged.addPage(p));
+        }catch(e){console.warn('PDF bijlage skip:',b.naam,e);}
+      }else{
+        // Afbeelding → nieuwe pagina
+        try{
+          const page=merged.addPage([595,842]);// A4 in points
+          let img;
+          if(b.mime==='image/png'){img=await merged.embedPng(raw);}
+          else{img=await merged.embedJpg(raw);}
+          const{width,height}=img.scaleToFit(555,802);
+          page.drawImage(img,{x:(595-width)/2,y:(842-height)/2,width,height});
+        }catch(e){console.warn('Img bijlage skip:',b.naam,e);}
+      }
+    }
+
+    const mergedBytes=await merged.save();
+    const blob=new Blob([mergedBytes],{type:'application/pdf'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url;a.download=f.nummer+(bijlagen.length?'-compleet':'')+'.pdf';
+    a.style.display='none';document.body.appendChild(a);a.click();
+    setTimeout(()=>{URL.revokeObjectURL(url);a.remove();},1000);
+  }catch(e){
+    console.error('Samenvoegen fout:',e);
+    alert('❌ Samenvoegen mislukt:\n'+e.message);
+  }finally{
+    if(btn){btn.textContent='⊕ Samenvoegen';btn.disabled=false;}
+  }
+}
+
+function base64ToArrayBuffer(b64){
+  const bin=atob(b64);
+  const arr=new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++)arr[i]=bin.charCodeAt(i);
+  return arr.buffer;
 }
 
 // ===== MICROSOFT GRAPH MAIL =====

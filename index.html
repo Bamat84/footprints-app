@@ -25,6 +25,11 @@ h2{font-size:11px;font-weight:600;margin-bottom:1rem;color:var(--text2);text-tra
 .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:1.25rem;}
 .stat{background:var(--bg);border:1px solid var(--border);border-radius:var(--rl);padding:1rem;}
 .stat-label{font-size:12px;color:var(--text2);margin-bottom:4px;}.stat-val{font-size:22px;font-weight:600;}
+.stat-sub{font-size:11px;color:var(--text3);margin-top:3px;min-height:14px;}
+#dash-stats{grid-template-columns:repeat(4,1fr);}
+#dash-stats .stat:hover{border-color:var(--purple);}
+.dash-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:1.25rem;}
+@media(max-width:1100px){#dash-stats{grid-template-columns:repeat(2,1fr);}.dash-grid{grid-template-columns:1fr;}}
 .fr{display:grid;gap:10px;margin-bottom:10px;}
 .c2{grid-template-columns:1fr 1fr;}.c3{grid-template-columns:1fr 1fr 1fr;}.c4{grid-template-columns:1fr 1fr 1fr 1fr;}.c32{grid-template-columns:2fr 1fr 1fr;}.c23{grid-template-columns:1fr 2fr 80px;}
 .c5{grid-template-columns:1fr 1fr 1fr 1fr 1fr;}
@@ -98,41 +103,58 @@ input[type=checkbox]{width:auto;accent-color:var(--purple);}
 <div class="page active" id="page-dashboard">
   <h1>Dashboard</h1>
   <div class="stats" id="dash-stats">
-    <div class="stat"><div class="stat-label">Openstaand</div><div class="stat-val" id="dash-open" style="color:#B45309">€ 0</div></div>
-    <div class="stat"><div class="stat-label">Betaald (dit jaar)</div><div class="stat-val" id="dash-betaald" style="color:#15803D">€ 0</div></div>
-    <div class="stat"><div class="stat-label">Vervallen</div><div class="stat-val" id="dash-vervallen" style="color:#B91C1C">€ 0</div></div>
+    <div class="stat" onclick="naarFacturen('vervallen')" style="cursor:pointer;"><div class="stat-label">Vervallen →</div><div class="stat-val" id="dash-vervallen" style="color:#B91C1C">€ 0</div><div class="stat-sub" id="dash-vervallen-sub"></div></div>
+    <div class="stat" onclick="naarFacturen('open')" style="cursor:pointer;"><div class="stat-label">Openstaand →</div><div class="stat-val" id="dash-open" style="color:#B45309">€ 0</div><div class="stat-sub" id="dash-open-sub"></div></div>
+    <div class="stat" onclick="showPage('overzicht')" style="cursor:pointer;"><div class="stat-label">Nog te factureren →</div><div class="stat-val" id="dash-tefact" style="color:var(--purple)">€ 0</div><div class="stat-sub" id="dash-tefact-sub"></div></div>
+    <div class="stat" onclick="naarFacturen('betaald')" style="cursor:pointer;"><div class="stat-label">Betaald dit jaar →</div><div class="stat-val" id="dash-betaald" style="color:#15803D">€ 0</div><div class="stat-sub" id="dash-betaald-sub"></div></div>
   </div>
-  <div class="card" style="padding:0;overflow:hidden;">
-    <div style="display:flex;align-items:center;gap:8px;padding:1rem 1.25rem;border-bottom:1px solid var(--border);">
-      <h2 style="margin:0;flex:1;">Factuuroverzicht</h2>
-      <select id="dash-filter" onchange="renderDash()" style="width:auto;">
-        <option value="">Alle facturen</option>
-        <option value="open">Openstaand</option>
-        <option value="vervallen">Vervallen</option>
-        <option value="betaald">Betaald</option>
-        <option value="creditnota">Creditnota's</option>
-      </select>
+
+  <div class="dash-grid">
+    <div class="card" style="padding:0;overflow:hidden;">
+      <div style="display:flex;align-items:center;gap:8px;padding:1rem 1.25rem;border-bottom:1px solid var(--border);">
+        <h2 style="margin:0;flex:1;">Vraagt aandacht</h2>
+        <a href="#" onclick="naarFacturen('');return false;" style="font-size:12px;color:var(--purple);text-decoration:none;">Alle facturen →</a>
+      </div>
+      <table><thead><tr><th>Nummer</th><th>Klant</th><th style="text-align:right">Bedrag</th><th>Status</th><th></th></tr></thead>
+      <tbody id="dash-aandacht"></tbody></table>
     </div>
-    <table>
-      <thead><tr>
-        <th>Nummer</th><th>Klant</th><th>Factuurdatum</th><th>Vervaldatum</th>
-        <th style="text-align:right">Totaal</th><th>Status</th><th></th>
-      </tr></thead>
-      <tbody id="dash-tbody"></tbody>
-    </table>
+
+    <div class="card" style="padding:0;overflow:hidden;">
+      <div style="padding:1rem 1.25rem;border-bottom:1px solid var(--border);">
+        <h2 style="margin:0;">Niet gefactureerde uren</h2>
+      </div>
+      <table><thead><tr><th>Klant</th><th style="text-align:right">Uren</th><th style="text-align:right">Bedrag</th></tr></thead>
+      <tbody id="dash-onfact"></tbody></table>
+    </div>
+  </div>
+
+  <div class="card">
+    <div style="display:flex;align-items:baseline;gap:12px;margin-bottom:1rem;">
+      <h2 style="margin:0;flex:1;">Gefactureerd per maand</h2>
+      <span style="font-size:12px;color:var(--text2);" id="dash-jaar-label"></span>
+    </div>
+    <div id="dash-maanden" style="display:flex;align-items:flex-end;gap:6px;height:140px;"></div>
   </div>
 </div>
 
 <!-- UREN -->
 <div class="page active" id="page-uren">
   <h1>Uren invoeren</h1>
+  <div class="card" style="padding:0.75rem 1rem;">
+    <div style="display:flex;align-items:center;gap:10px;">
+      <button class="btn btn-sm" onclick="weekShift(-1)" title="Vorige week">‹</button>
+      <div id="u-weekbalk" style="display:flex;gap:6px;flex:1;"></div>
+      <button class="btn btn-sm" onclick="weekShift(1)" title="Volgende week">›</button>
+      <button class="btn btn-sm" onclick="weekShift(0)" title="Deze week">Vandaag</button>
+    </div>
+  </div>
   <div class="card">
     <div class="fr c2">
       <div><label>Klant</label><select id="u-klant" onchange="uKlantChange()"><option value="">— kies klant —</option></select></div>
       <div><label>Project</label><select id="u-project"><option value="">— geen project —</option></select></div>
     </div>
     <div class="fr c5">
-      <div><label>Datum</label><input type="date" id="u-datum"></div>
+      <div><label>Datum</label><input type="date" id="u-datum" onchange="renderWeek()"></div>
       <div><label>Activiteit</label><select id="u-activiteit">
         <option value="">— kies —</option>
         <option>Advies</option><option>Call</option><option>Day</option>
@@ -295,6 +317,17 @@ input[type=checkbox]{width:auto;accent-color:var(--purple);}
     </div>
   </div>
   <div class="tab-pane" id="fac-lijst">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:1rem;">
+      <span style="font-size:13px;color:var(--text2);">Toon:</span>
+      <select id="fl-filter" onchange="renderFL()" style="width:auto;">
+        <option value="">Alle facturen</option>
+        <option value="open">Openstaand</option>
+        <option value="vervallen">Vervallen</option>
+        <option value="betaald">Betaald</option>
+        <option value="creditnota">Creditnota's</option>
+      </select>
+      <span id="fl-telling" style="font-size:12px;color:var(--text3);"></span>
+    </div>
     <div class="card" style="padding:0;overflow:hidden;">
       <table><thead><tr><th>Nummer</th><th>Klant</th><th>PO nummer</th><th>Datum</th><th style="text-align:right">Totaal</th><th>Status</th><th></th></tr></thead>
       <tbody id="fl-tbody"></tbody></table>
@@ -377,6 +410,11 @@ input[type=checkbox]{width:auto;accent-color:var(--purple);}
       <div><label>Telefoon</label><input type="text" id="k-tel" placeholder="+32 9 123 45 67"></div>
     </div>
     <div class="fr c3">
+      <div><label>Facturatiecontact</label><input type="text" id="k-fcontact" placeholder="Boekhouding"></div>
+      <div><label>Facturatie e-mail</label><input type="text" id="k-femail" placeholder="facturen@klant.be"></div>
+      <div><label>Betaaltermijn (dagen)</label><input type="number" id="k-termijn" placeholder="30"></div>
+    </div>
+    <div class="fr c3">
       <div><label>Projecten (komma-gescheiden)</label><input type="text" id="k-project" placeholder="Project A, Project B"></div>
       <div><label>Standaard tarief (€/u)</label><input type="number" id="k-tarief" placeholder="125"></div>
       <div><label>&nbsp;</label><div id="k-edit-banner" style="display:none;font-size:12px;color:var(--purple);margin-bottom:6px;padding:6px 10px;background:var(--purple-l);border-radius:var(--r);border:1px solid var(--purple);">✎ Klant bewerken — <a href="#" onclick="cancelEditKlant();return false;" style="color:var(--purple)">annuleer</a></div><button id="k-save-btn" class="btn btn-primary" style="width:100%;justify-content:center;" onclick="addKlant()">+ Klant toevoegen</button></div>
@@ -388,7 +426,7 @@ input[type=checkbox]{width:auto;accent-color:var(--purple);}
     <button class="tab-btn" id="k-filter-archived" onclick="kFilter('archived')" style="margin-bottom:0;border-bottom:none;padding:6px 12px;border-radius:var(--r);border:1px solid var(--border);">Gearchiveerd</button>
   </div>
   <div class="card" style="padding:0;overflow:hidden;">
-    <table><thead><tr><th>Nr</th><th>Klant</th><th>Adres</th><th>BTW</th><th>Projecten</th><th style="text-align:right">Tarief</th><th></th></tr></thead>
+    <table><thead><tr><th>Nr</th><th>Klant</th><th>Adres</th><th>BTW</th><th>Projecten</th><th style="text-align:right">Tarief</th><th style="text-align:right">Omzet excl. btw</th><th></th></tr></thead>
     <tbody id="k-tbody"></tbody></table>
   </div>
 </div>
@@ -547,7 +585,8 @@ async function saveClient(c){
     id:c.id, nr:c.nr||null, naam:c.naam,
     adres:c.adres||null, plaats:c.plaats||null, land:c.land||null,
     btw:c.btw||null, email:c.email||null, tel:c.tel||null,
-    tarief:c.tarief||null, project:c.project||null, actief:!c.archived
+    tarief:c.tarief||null, fcontact:c.fcontact||null, femail:c.femail||null,
+    termijn:c.termijn||null, project:c.project||null, actief:!c.archived
   };
   try{
     await sbUpsert('clients',[row]);
@@ -557,8 +596,9 @@ async function saveClient(c){
     if(!/PGRST204|schema cache|column/i.test(String(e&&e.message||e)))throw e;
     const basis=Object.assign({},row);
     delete basis.plaats; delete basis.land; delete basis.tarief;
+    delete basis.fcontact; delete basis.femail; delete basis.termijn;
     await sbUpsert('clients',[basis]);
-    console.warn('De clients-tabel mist de kolommen plaats, land of tarief. Die velden zijn niet bewaard — voeg de kolommen toe in Supabase.');
+    console.warn('De clients-tabel mist een of meer van de kolommen plaats, land, tarief, fcontact, femail of termijn. Die velden zijn niet bewaard — voeg de kolommen toe in Supabase.');
   }
 }
 async function saveSettings(){
@@ -725,7 +765,50 @@ function uToevoegen(){
   document.getElementById('u-facturabel').checked=true;
   renderU();
 }
+// ===== WEEKBALK BIJ UREN INVOEREN =====
+let _weekOffset=0;
+function weekShift(n){_weekOffset=n===0?0:_weekOffset+n;renderWeek();}
+function weekMaandag(offset){
+  const d=new Date(td());
+  const dow=(d.getDay()+6)%7; // maandag = 0
+  d.setDate(d.getDate()-dow+offset*7);
+  return d;
+}
+function renderWeek(){
+  const bar=document.getElementById('u-weekbalk');
+  if(!bar)return;
+  const ma=weekMaandag(_weekOffset);
+  const gekozen=document.getElementById('u-datum').value;
+  const dagen=['Ma','Di','Wo','Do','Vr','Za','Zo'];
+  let html='';
+  for(let i=0;i<7;i++){
+    const d=new Date(ma);d.setDate(ma.getDate()+i);
+    const iso=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+    const u=db.entries.filter(e=>e.datum===iso).reduce((s,e)=>s+e.uren,0);
+    const isVandaag=iso===td();
+    const isGekozen=iso===gekozen;
+    const leeg=u===0&&i<5;
+    html+=`<button onclick="kiesDag('${iso}')" title="${iso}" style="flex:1;cursor:pointer;text-align:center;padding:6px 2px;border-radius:var(--r);font-size:12px;
+      border:1px solid ${isGekozen?'var(--purple)':'var(--border)'};
+      background:${isGekozen?'var(--purple-l)':(isVandaag?'var(--bg2)':'var(--bg)')};">
+      <div style="color:var(--text2);font-size:11px;">${dagen[i]} ${d.getDate()}</div>
+      <div style="font-weight:600;color:${u?'var(--text)':(leeg?'#B45309':'var(--text3)')};">${fmt(u)}</div>
+    </button>`;
+  }
+  const totaal=Array.from({length:7},(_,i)=>{const d=new Date(ma);d.setDate(ma.getDate()+i);
+    const iso=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+    return db.entries.filter(e=>e.datum===iso).reduce((s,e)=>s+e.uren,0);}).reduce((a,b)=>a+b,0);
+  html+=`<div style="padding:6px 10px;text-align:center;font-size:12px;border-left:1px solid var(--border);margin-left:4px;">
+    <div style="color:var(--text2);font-size:11px;">Week</div>
+    <div style="font-weight:600;">${fmt(totaal)}</div></div>`;
+  bar.innerHTML=html;
+}
+function kiesDag(iso){
+  document.getElementById('u-datum').value=iso;
+  renderWeek();
+}
 function renderU(){
+  renderWeek();
   const tb=document.getElementById('u-tbody');
   const r=db.entries.filter(e=>!e.imported).slice(0,15);
   if(!r.length){tb.innerHTML='<tr><td colspan="8" class="empty">Nog geen eigen registraties — importeer TimeChimp-data via Instellingen</td></tr>';return;}
@@ -1038,7 +1121,13 @@ function calcVervaldag(){
   if(d){const dt=new Date(d);dt.setDate(dt.getDate()+t);document.getElementById('f-vervaldag').value=dt.toISOString().slice(0,10);}
   renderFac();
 }
-function fKlantChange(){window._facSelectieIds=null;window._facSelectieCid=null;renderFac();}
+function fKlantChange(){
+  window._facSelectieIds=null;window._facSelectieCid=null;
+  // Betaaltermijn van de klant overnemen en de vervaldatum herberekenen.
+  const c=gc(parseInt(document.getElementById('f-klant').value));
+  if(c&&c.termijn){document.getElementById('f-termijn').value=c.termijn;calcVervaldag();return;}
+  renderFac();
+}
 function addVrij(){
   const o=document.getElementById('vr-omschr').value.trim();
   const b=parseFloat(document.getElementById('vr-bedrag').value);
@@ -1332,43 +1421,124 @@ function facStatus(f){
 function facStatusLabel(st){
   return{open:'Openstaand',verzonden:'Verzonden',betaald:'Betaald',vervallen:'Vervallen',creditnota:'Creditnota'}[st]||st;
 }
+// Aantal dagen dat een factuur over haar vervaldatum is. Null als ze betaald
+// is, een creditnota is, of nog niet vervallen.
+function dagenTeLaat(f){
+  if(f.betaald||f.creditnota||!f.vervaldag)return null;
+  const ms=new Date(td()).getTime()-new Date(f.vervaldag).getTime();
+  const d=Math.floor(ms/86400000);
+  return d>0?d:null;
+}
+function facStatusTekst(f){
+  const d=dagenTeLaat(f);
+  if(d!==null)return d===1?'1 dag te laat':d+' dagen te laat';
+  return facStatusLabel(facStatus(f));
+}
+// Gefactureerde omzet excl. btw per klant, creditnota's meegerekend.
+function omzetKlant(cid){
+  return db.facturen.filter(f=>f.klantId===cid).reduce((s,f)=>s+(f.subtotaal||0),0);
+}
 async function toggleBetaald(id){const f=db.facturen.find(x=>x.id===id);if(!f)return;f.betaald=!f.betaald;if(f.betaald)f.betaaldOp=td();else delete f.betaaldOp;renderFL();renderDash();try{await saveFactuur(f);}catch(e){console.error('SB save factuur:',e);}}
+// Vanuit het dashboard naar de facturenlijst, met het juiste filter ingesteld.
+function naarFacturen(filter){
+  showPage('factuur');
+  facTab('lijst');
+  const sel=document.getElementById('fl-filter');
+  if(sel){sel.value=filter||'';renderFL();}
+}
 function renderDash(){
-  const filter=document.getElementById('dash-filter')?.value||'';
-  let facturen=[...db.facturen];
-  const open=facturen.filter(f=>facStatus(f)==='open');
+  const facturen=db.facturen;
+  const open=facturen.filter(f=>['open','verzonden'].includes(facStatus(f)));
   const vervallen=facturen.filter(f=>facStatus(f)==='vervallen');
-  const betaald=facturen.filter(f=>facStatus(f)==='betaald');
   const thisYear=new Date().getFullYear().toString();
-  const betaaldJaar=betaald.filter(f=>f.betaaldOp&&f.betaaldOp.startsWith(thisYear));
-  document.getElementById('dash-open').textContent=eur(open.reduce((s,f)=>s+f.totaal,0));
-  document.getElementById('dash-betaald').textContent=eur(betaaldJaar.reduce((s,f)=>s+f.totaal,0));
-  document.getElementById('dash-vervallen').textContent=eur(vervallen.reduce((s,f)=>s+f.totaal,0));
-  if(filter==='open')facturen=open;else if(filter==='vervallen')facturen=vervallen;else if(filter==='betaald')facturen=betaald;
-  const tbody=document.getElementById('dash-tbody');
-  if(!facturen.length){tbody.innerHTML='<tr><td colspan="7" class="empty">Geen facturen</td></tr>';return;}
-  tbody.innerHTML=facturen.map(f=>{
-    const st=facStatus(f);
-    const badge=`<span class="status-${st}">${facStatusLabel(st)}</span>`;
-    return`<tr>
-      <td style="font-weight:500">${f.nummer}</td>
-      <td>${f.klant}</td>
-      <td style="color:var(--text2)">${f.datum?fmtDateSlash(f.datum):'—'}</td>
-      <td style="color:${st==='vervallen'?'#B91C1C':'var(--text2)'}">${f.vervaldag?fmtDateSlash(f.vervaldag):'—'}</td>
-      <td style="text-align:right;font-weight:500">${eur(f.totaal)}</td>
-      <td>${badge}${f.betaaldOp?`<span style="font-size:11px;color:var(--text3);margin-left:6px;">${fmtDateSlash(f.betaaldOp)}</span>`:''}</td>
-      <td style="text-align:right">
-        <button class="btn btn-sm" onclick="toggleBetaald(${f.id})" style="${f.betaald?'':'background:#F0FDF4;border-color:#86EFAC;color:#15803D;'}">${f.betaald?'↺ Heropen':'✓ Betaald'}</button>
-      </td>
-    </tr>`;
+  const betaaldJaar=facturen.filter(f=>f.betaald&&f.betaaldOp&&f.betaaldOp.startsWith(thisYear));
+
+  // Niet gefactureerde, facturabele uren per klant.
+  const onfact=db.entries.filter(e=>e.facturabel!==false&&!e.gefactureerd);
+  const perKlant={};
+  onfact.forEach(e=>{
+    if(!perKlant[e.clientId])perKlant[e.clientId]={uren:0,bedrag:0};
+    perKlant[e.clientId].uren+=e.uren;
+    perKlant[e.clientId].bedrag+=e.uren*(e.tarief||0);
+  });
+  const onfactTotaal=onfact.reduce((s,e)=>s+e.uren*(e.tarief||0),0);
+
+  const zet=(id,txt)=>{const el=document.getElementById(id);if(el)el.textContent=txt;};
+  zet('dash-vervallen',eur(vervallen.reduce((s,f)=>s+f.totaal,0)));
+  zet('dash-vervallen-sub',vervallen.length?vervallen.length+' factu'+(vervallen.length===1?'ur':'ren')+', oudste '+Math.max(...vervallen.map(f=>dagenTeLaat(f)||0))+' dagen te laat':'niets te laat');
+  zet('dash-open',eur(open.reduce((s,f)=>s+f.totaal,0)));
+  zet('dash-open-sub',open.length?open.length+' factu'+(open.length===1?'ur':'ren')+' nog niet betaald':'alles betaald');
+  zet('dash-tefact',eur(onfactTotaal));
+  zet('dash-tefact-sub',onfact.length?fmt(onfact.reduce((s,e)=>s+e.uren,0))+' uren over '+Object.keys(perKlant).length+' klanten':'alles gefactureerd');
+  zet('dash-betaald',eur(betaaldJaar.reduce((s,f)=>s+f.totaal,0)));
+  zet('dash-betaald-sub',betaaldJaar.length+' facturen in '+thisYear);
+
+  // Vraagt aandacht: eerst de vervallen, dan de openstaande, oudste bovenaan.
+  const aandacht=[...vervallen.sort((a,b)=>(dagenTeLaat(b)||0)-(dagenTeLaat(a)||0)),...open]
+    .slice(0,6);
+  const tb=document.getElementById('dash-aandacht');
+  if(tb){
+    tb.innerHTML=aandacht.length?aandacht.map(f=>{
+      const st=facStatus(f);
+      return`<tr>
+        <td style="font-weight:500"><a href="#" onclick="naarFacturen('');return false;" style="color:var(--purple);text-decoration:none;">${f.nummer}</a></td>
+        <td>${f.klant}</td>
+        <td style="text-align:right;font-weight:500">${eur(f.totaal)}</td>
+        <td><span class="status-${st}">${facStatusTekst(f)}</span></td>
+        <td style="text-align:right"><button class="btn btn-sm" onclick="toggleBetaald(${f.id})" style="background:#F0FDF4;border-color:#86EFAC;color:#15803D;">✓ Betaald</button></td>
+      </tr>`;}).join('')
+      :'<tr><td colspan="5" class="empty">Niets openstaand</td></tr>';
+  }
+
+  // Niet gefactureerde uren per klant, grootste bedrag eerst.
+  const tb2=document.getElementById('dash-onfact');
+  if(tb2){
+    const rijen=Object.entries(perKlant).sort((a,b)=>b[1].bedrag-a[1].bedrag).slice(0,8);
+    tb2.innerHTML=rijen.length?rijen.map(([cid,v])=>{
+      const c=gc(parseInt(cid));
+      return`<tr>
+        <td><span class="badge ${c?.color||'c0'}">${c?.naam||'onbekend'}</span></td>
+        <td style="text-align:right;white-space:nowrap">${fmt(v.uren)}</td>
+        <td style="text-align:right;font-weight:500">${eur(v.bedrag)}</td>
+      </tr>`;}).join('')
+      :'<tr><td colspan="3" class="empty">Geen openstaande uren</td></tr>';
+  }
+
+  renderMaanden(thisYear);
+}
+// Staafgrafiek van wat er per maand gefactureerd is, excl. btw.
+function renderMaanden(jaar){
+  const wrap=document.getElementById('dash-maanden');
+  if(!wrap)return;
+  const namen=['jan','feb','mrt','apr','mei','jun','jul','aug','sep','okt','nov','dec'];
+  const perMaand=new Array(12).fill(0);
+  db.facturen.forEach(f=>{
+    if(!f.datum||!f.datum.startsWith(jaar))return;
+    perMaand[parseInt(f.datum.slice(5,7),10)-1]+=(f.subtotaal||0);
+  });
+  const max=Math.max(...perMaand,1);
+  const totaal=perMaand.reduce((a,b)=>a+b,0);
+  const lbl=document.getElementById('dash-jaar-label');
+  if(lbl)lbl.textContent=jaar+' — totaal '+eur(totaal)+' excl. btw';
+  wrap.innerHTML=perMaand.map((v,i)=>{
+    const h=Math.max(2,Math.round(v/max*100));
+    return`<div style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%;" title="${namen[i]}: ${eur(v)}">
+      <div style="font-size:10px;color:var(--text3);margin-bottom:3px;">${v?Math.round(v/1000)+'k':''}</div>
+      <div style="width:100%;height:${h}%;background:${v?'var(--purple)':'var(--border)'};border-radius:3px 3px 0 0;"></div>
+      <div style="font-size:11px;color:var(--text2);margin-top:4px;">${namen[i]}</div>
+    </div>`;
   }).join('');
 }
 function renderFL(){
   const tbody=document.getElementById('fl-tbody');
-  if(!db.facturen.length){tbody.innerHTML='<tr><td colspan="7" class="empty">Nog geen opgeslagen facturen</td></tr>';return;}
-  tbody.innerHTML=db.facturen.map(f=>{
+  const filter=document.getElementById('fl-filter')?.value||'';
+  const lijst=filter?db.facturen.filter(f=>facStatus(f)===filter||(filter==='open'&&facStatus(f)==='verzonden')):db.facturen;
+  const tel=document.getElementById('fl-telling');
+  if(tel)tel.textContent=lijst.length+' van '+db.facturen.length+' — '+eur(lijst.reduce((s,f)=>s+(f.totaal||0),0));
+  if(!lijst.length){tbody.innerHTML='<tr><td colspan="7" class="empty">Geen facturen in deze selectie</td></tr>';return;}
+  tbody.innerHTML=lijst.map(f=>{
     const st=facStatus(f);
-    const badge=`<span class="status-${st}">${facStatusLabel(st)}</span>`;
+    const badge=`<span class="status-${st}">${facStatusTekst(f)}</span>`;
     return`<tr>
       <td style="font-weight:500"><a href="#" onclick="openFacDetail(${f.id});return false;" style="color:var(--purple);text-decoration:none;">${f.nummer}</a></td>
       <td>${f.klant}</td>
@@ -1432,6 +1602,9 @@ function addKlant(){
       c.btw=document.getElementById('k-btw').value.trim();
       c.email=document.getElementById('k-email').value.trim();
       c.tel=document.getElementById('k-tel').value.trim();
+      c.fcontact=document.getElementById('k-fcontact').value.trim();
+      c.femail=document.getElementById('k-femail').value.trim();
+      c.termijn=parseInt(document.getElementById('k-termijn').value,10)||null;
       saveClient(c).catch(e=>console.error('SB save klant:',e));
     }
     cancelEditKlant();fillSels();renderK();return;
@@ -1440,11 +1613,11 @@ function addKlant(){
   // nummer nooit opnieuw wordt uitgedeeld.
   const hoogste=db.clients.reduce((m,c)=>{const n=parseInt(c.nr,10);return isNaN(n)?m:Math.max(m,n);},0);
   const nr=document.getElementById('k-nr').value.trim()||String(hoogste+1).padStart(3,'0');
-  const newClient={id:db.nextId++,nr,naam,adres:document.getElementById('k-adres').value.trim(),plaats:document.getElementById('k-plaats').value.trim(),land:document.getElementById('k-land').value.trim(),btw:document.getElementById('k-btw').value.trim(),email:document.getElementById('k-email').value.trim(),tel:document.getElementById('k-tel').value.trim(),project:document.getElementById('k-project').value.trim()||naam,tarief,color:COLORS[db.clients.length%COLORS.length],archived:false};
+  const newClient={id:db.nextId++,nr,naam,adres:document.getElementById('k-adres').value.trim(),plaats:document.getElementById('k-plaats').value.trim(),land:document.getElementById('k-land').value.trim(),btw:document.getElementById('k-btw').value.trim(),email:document.getElementById('k-email').value.trim(),tel:document.getElementById('k-tel').value.trim(),fcontact:document.getElementById('k-fcontact').value.trim(),femail:document.getElementById('k-femail').value.trim(),termijn:parseInt(document.getElementById('k-termijn').value,10)||null,project:document.getElementById('k-project').value.trim()||naam,tarief,color:COLORS[db.clients.length%COLORS.length],archived:false};
   db.clients.push(newClient);
   saveClient(newClient).then(()=>saveSettings()).catch(e=>console.error('SB save client:',e));
   fillSels();renderK();
-  ['k-naam','k-nr','k-adres','k-plaats','k-land','k-btw','k-email','k-tel','k-project','k-tarief'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  ['k-naam','k-nr','k-adres','k-plaats','k-land','k-btw','k-email','k-tel','k-fcontact','k-femail','k-termijn','k-project','k-tarief'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
 }
 let kCurrentFilter='active';
 function kFilter(f){kCurrentFilter=f;document.getElementById('k-filter-active').classList.toggle('active',f==='active');document.getElementById('k-filter-archived').classList.toggle('active',f==='archived');renderK();}
@@ -1461,6 +1634,9 @@ function editKlant(id){
   document.getElementById('k-btw').value=c.btw||'';
   document.getElementById('k-email').value=c.email||'';
   document.getElementById('k-tel').value=c.tel||'';
+  document.getElementById('k-fcontact').value=c.fcontact||'';
+  document.getElementById('k-femail').value=c.femail||'';
+  document.getElementById('k-termijn').value=c.termijn||'';
   document.getElementById('k-tarief').value=c.tarief||'';
   document.getElementById('k-save-btn').textContent='Klant opslaan';
   document.getElementById('k-edit-banner').style.display='';
@@ -1468,7 +1644,7 @@ function editKlant(id){
 }
 function cancelEditKlant(){
   _editKlantId=null;
-  ['k-naam','k-nr','k-adres','k-plaats','k-land','k-btw','k-email','k-tel','k-tarief'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  ['k-naam','k-nr','k-adres','k-plaats','k-land','k-btw','k-email','k-tel','k-fcontact','k-femail','k-termijn','k-tarief'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   const btn=document.getElementById('k-save-btn');if(btn)btn.textContent='+ Klant toevoegen';
   const banner=document.getElementById('k-edit-banner');if(banner)banner.style.display='none';
 }
@@ -1503,7 +1679,7 @@ function renderK(){
   document.getElementById('k-filter-active').textContent='Actief ('+active.length+')';
   document.getElementById('k-filter-archived').textContent='Gearchiveerd ('+archived.length+')';
   const list=kCurrentFilter==='active'?active:archived;
-  if(!list.length){tbody.innerHTML='<tr><td colspan="7" class="empty">Geen klanten</td></tr>';return;}
+  if(!list.length){tbody.innerHTML='<tr><td colspan="8" class="empty">Geen klanten</td></tr>';return;}
   tbody.innerHTML=list.map(c=>`<tr>
     <td style="font-weight:500;color:var(--text2)">${c.nr||'—'}</td>
     <td><span class="badge ${c.color}">${c.naam}</span></td>
@@ -1511,6 +1687,7 @@ function renderK(){
     <td style="color:var(--text2);font-size:12px">${c.btw||'—'}</td>
     <td style="color:var(--text2);font-size:12px">${c.project||'—'}</td>
     <td style="text-align:right">€ ${c.tarief}/u</td>
+    <td style="text-align:right;font-weight:500">${omzetKlant(c.id)?eur(omzetKlant(c.id)):'—'}</td>
     <td style="text-align:right;white-space:nowrap;">
       <button class="btn btn-sm" onclick="editKlant(${c.id})" title="Bewerken">✎</button>
       <button class="btn btn-sm" onclick="archiveKlant(${c.id})" title="${c.archived?'Heractiveren':'Archiveren'}">${c.archived?'↺':'⊘'}</button>
@@ -1557,14 +1734,17 @@ async function toggleVerzonden(id){
   renderFL();renderDash();
   try{await saveFactuur(f);}catch(e){console.error('SB save factuur:',e);}
 }
+// Het facturatiecontact van een klant krijgt voorrang op het algemene adres.
+function facEmail(c){return(c&&(c.femail||c.email))||'';}
+function facAanhef(c){return c&&c.fcontact?('Beste '+c.fcontact):'Geachte';}
 function mailtoFac(id){
   const f=db.facturen.find(x=>x.id===id);if(!f)return;
   const c=gc(f.klantId);
-  const email=c?.email||'';
+  const email=facEmail(c);
   const s=db.settings;
   const onderwerp=encodeURIComponent('Factuur '+f.nummer+' — '+s.naam);
   const body=encodeURIComponent(
-    'Geachte,\n\n'+
+    facAanhef(c)+',\n\n'+
     'In bijlage vindt u factuur '+f.nummer+' ten bedrage van '+eur(f.totaal)+' (incl. BTW).\n\n'+
     (f.vervaldag?'Gelieve te betalen vóór '+fmtDateSlash(f.vervaldag)+'.\n\n':'')+
     (s.iban?'Rekeningnummer: '+s.iban+'\nMededeling: '+f.nummer+'\n\n':'')+
@@ -1578,12 +1758,12 @@ function mailtoFac(id){
 function herinneringMail(id){
   const f=db.facturen.find(x=>x.id===id);if(!f)return;
   const c=gc(f.klantId);
-  const email=c?.email||'';
+  const email=facEmail(c);
   const s=db.settings;
   const st=facStatus(f);
   const onderwerp=encodeURIComponent('Betalingsherinnering — Factuur '+f.nummer+' — '+s.naam);
   const body=encodeURIComponent(
-    'Geachte,\n\n'+
+    facAanhef(c)+',\n\n'+
     (st==='vervallen'
       ? 'Wij stellen vast dat factuur '+f.nummer+' ten bedrage van '+eur(f.totaal)+' (incl. BTW), met vervaldatum '+fmtDateSlash(f.vervaldag)+', nog niet werd vereffend.\n\nWij verzoeken u vriendelijk dit bedrag zo spoedig mogelijk over te schrijven.'
       : 'Graag herinneren wij u aan factuur '+f.nummer+' ten bedrage van '+eur(f.totaal)+' (incl. BTW), met vervaldatum '+(f.vervaldag?fmtDateSlash(f.vervaldag):'—')+'.'
@@ -1686,6 +1866,8 @@ function sbClientToLocal(r){
     plaats:r.plaats||'',land:r.land||'',
     btw:r.btw||'',email:r.email||'',tel:r.tel||'',
     tarief:r.tarief!=null?parseFloat(r.tarief):DEFAULT_TARIEF,
+    fcontact:r.fcontact||'',femail:r.femail||'',
+    termijn:r.termijn!=null?parseInt(r.termijn,10):null,
     project:r.project||'',actief:r.actief!==false,
     archived:r.actief===false,color:'c0'};
 }

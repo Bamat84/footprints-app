@@ -605,6 +605,8 @@ function fmtBoth(h){return fmt(h)+' <span style="color:var(--text3);font-size:11
 function fmtDate(iso){if(!iso)return'—';const[y,m,d]=iso.split('-');return d+'-'+m+'-'+y;}
 function fmtDateSlash(iso){if(!iso)return'—';const[y,m,d]=iso.split('-');return d+'/'+m+'/'+y;}
 function eur(n){return'€ '+n.toLocaleString('nl-BE',{minimumFractionDigits:2,maximumFractionDigits:2});}
+// Bedragen op de PDF in Belgisch formaat: 16.666,66 in plaats van 16666.66
+function pdfNum(n){return(Number(n)||0).toLocaleString('nl-BE',{minimumFractionDigits:2,maximumFractionDigits:2});}
 function td(){return new Date().toISOString().slice(0,10);}
 function tm(){return new Date().toISOString().slice(0,7);}
 function nextFacNr(){const n=db.settings.facnr||'2026-001';const cy=new Date().getFullYear();const m=n.match(/^(\d{4})(\D*)(\d+)$/);if(m){const ny=parseInt(m[1]);if(ny!==cy)return String(cy)+'01';return String(cy)+m[2]+String(parseInt(m[3])+1).padStart(m[3].length,'0');}return n;}
@@ -1133,7 +1135,7 @@ function renderFac(){
       <td>${r.omschrijving}${r.isSummary?` <span style="font-size:10px;color:var(--text3)">(${urenRegelsPreview.length} tijdregistraties — bijlage in PDF)</span>`:''}</td>
       <td><span class="tag">${r.type==='uren'?'uren':r.type}</span></td>
       <td style="text-align:right">${r.type==='uren'?fmt(r.aantal):r.aantal}</td>
-      <td style="text-align:right;color:var(--text2)">${r.type==='uren'?'€ '+r.prijs.toFixed(2):'—'}</td>
+      <td style="text-align:right;color:var(--text2)">${r.type==='uren'?eur(r.prijs):'—'}</td>
       <td style="text-align:right;font-weight:500">${eur(r.bedrag)}</td>
       <td>${r.extraIdx!=null?`<button class="btn btn-sm btn-danger" onclick="delExtra(${facExtra[r.extraIdx].id})">✕</button>`:''}</td>
     </tr>`).join('');
@@ -1197,9 +1199,9 @@ function buildFactuurPDF(d,externalDoc,returnDoc){
     const totB=urenRegelsDoc.reduce((s,r)=>s+r.bedrag,0);
     const tarief=urenRegelsDoc[0].prijs;
     const omschr='Consultancy diensten'+(d.periode?' — '+d.periode:'');
-    tableRows.push([omschr,fmt(totU),tarief.toFixed(2),totB.toFixed(2),d.btwPct+'%']);
+    tableRows.push([omschr,fmt(totU),pdfNum(tarief),pdfNum(totB),d.btwPct+'%']);
   }
-  extraRegelsDoc.forEach(r=>tableRows.push([r.omschrijving,'1','',r.bedrag.toFixed(2),d.btwPct+'%']));
+  extraRegelsDoc.forEach(r=>tableRows.push([r.omschrijving,'1','',pdfNum(r.bedrag),d.btwPct+'%']));
   const head=[['Omschrijving','Aantal','Prijs','Totaal','Btw']];
   const body=tableRows;
   doc.autoTable({
@@ -1229,9 +1231,9 @@ function buildFactuurPDF(d,externalDoc,returnDoc){
   // Totaalblok (rechts uitgelijnd, stijl als referentie)
   const lx=W-mr-55,vx=W-mr;
   const trows=[
-    ['Totaal excl. btw',d.subtotaal.toFixed(2),false],
-    ['Btw ('+d.btwPct+'%)',d.btwBedrag.toFixed(2),false],
-    ['Totaal EUR',d.totaal.toFixed(2),true],
+    ['Totaal excl. btw',pdfNum(d.subtotaal),false],
+    ['Btw ('+d.btwPct+'%)',pdfNum(d.btwBedrag),false],
+    ['Totaal EUR',pdfNum(d.totaal),true],
   ];
   trows.forEach(r=>{
     if(r[2]){
@@ -1269,12 +1271,12 @@ function buildFactuurPDF(d,externalDoc,returnDoc){
       [e.project,e.activiteit].filter(Boolean).join(' / ')||'—',
       e.omschrijving||'',
       fmt(e.aantal),
-      '€ '+e.prijs.toFixed(2),
-      '€ '+e.bedrag.toFixed(2)
+      '€ '+pdfNum(e.prijs),
+      '€ '+pdfNum(e.bedrag)
     ]);
     const totUSpec=urenRegelsDoc.reduce((s,r)=>s+r.aantal,0);
     const totBSpec=urenRegelsDoc.reduce((s,r)=>s+r.bedrag,0);
-    specBody.push(['','','Totaal',fmt(totUSpec),'','€ '+totBSpec.toFixed(2)]);
+    specBody.push(['','','Totaal',fmt(totUSpec),'','€ '+pdfNum(totBSpec)]);
     doc.autoTable({
       startY:by,head:specHead,body:specBody,
       headStyles:{fillColor:null,textColor:40,fontStyle:'bold',fontSize:8.5},

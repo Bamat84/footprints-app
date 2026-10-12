@@ -193,6 +193,7 @@ input[type=checkbox]{width:auto;accent-color:var(--purple);}
     <div class="btn-row" style="margin-top:0.5rem;">
       <button class="btn" onclick="exportCSV()">↓ CSV</button>
       <button class="btn btn-danger" onclick="deleteSelectie()" title="Verwijder geselecteerde uren">✕ Verwijder selectie</button>
+      <button class="btn btn-danger" onclick="wisGefactureerde()" title="Verwijder alle als gefactureerd gemarkeerde uren">✕ Wis gefactureerde uren</button>
       <button class="btn" onclick="markGefactureerd()" title="Markeer gefilterde factureerbare uren als gefactureerd">✓ Markeer gefactureerd</button>
       <button class="btn" onclick="downloadUrenspec()">↓ Urenspecificatie PDF</button>
       <button class="btn btn-primary" onclick="factureerSelectie()">Factuur maken met selectie →</button>
@@ -747,6 +748,18 @@ async function deleteSelectie(){
   }
   renderU();renderOv();renderDash();
 }
+async function wisGefactureerde(){
+  const gefac=db.entries.filter(e=>e.gefactureerd);
+  if(!gefac.length){alert('Geen gefactureerde uren gevonden om te verwijderen.');return;}
+  if(!confirm(gefac.length+' gefactureerde uren verwijderen? Dit kan niet ongedaan worden gemaakt.'))return;
+  for(const e of gefac){
+    try{await sbDelete('entries','id=eq.'+e.id);}catch(err){console.error('SB delete:',err);}
+  }
+  db.entries=db.entries.filter(e=>!e.gefactureerd);
+  renderU();renderOv();renderDash();
+  alert(gefac.length+' gefactureerde uren verwijderd.');
+}
+
 function clearFacSelectie(){
   window._facSelectieIds=null;
   window._facSelectieCid=null;
@@ -827,12 +840,17 @@ function pdfHeader(doc,s){
 
 // URENSPECIFICATIE PDF
 function downloadUrenspec(){
-  const en=getFilteredEntries().filter(e=>e.facturabel!==false);
-  if(!en.length){alert('Geen factureerbare registraties om te exporteren.');return;}
-  const van=document.getElementById('ov-van')?.value;
-  const tot=document.getElementById('ov-tot')?.value;
+  // Gebruik geselecteerde uren als er een selectie is, anders alle gefilterde
+  const selIds=getSelectedIds();
+  let en;
+  if(selIds.length){
+    en=selIds.map(id=>db.entries.find(e=>e.id===id)).filter(Boolean);
+  }else{
+    en=getFilteredEntries().filter(e=>e.facturabel!==false);
+  }
+  if(!en.length){alert('Geen registraties om te exporteren. Selecteer uren of pas het filter aan.');return;}
   const fk=document.getElementById('ov-fk')?.value;
-  const klant=fk?gc(parseInt(fk)):null;
+  const klant=fk?gc(parseInt(fk)):(en.length&&new Set(en.map(e=>e.clientId)).size===1?gc(en[0].clientId):null);
   const{jsPDF}=window.jspdf;
   const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
   const s=db.settings;
@@ -841,37 +859,40 @@ function downloadUrenspec(){
   let y=pdfHeader(doc,s);
   y+=6;
   doc.setFontSize(16);doc.setFont(undefined,'bold');doc.setTextColor(20);
-  doc.text('Urenspecificatie',ml,y);
-  y+=8;
+  doc.text('Urenspecificatie',ml,y);y+=8;
   if(klant){doc.setFontSize(10);doc.setFont(undefined,'normal');doc.setTextColor(60);doc.text('Klant: '+klant.naam,ml,y);y+=6;}
-  let periodeStr='';
-  if(van||tot){periodeStr=(van?fmtDateSlash(van):'...')+' - '+(tot?fmtDateSlash(tot):'...');}
-  else{const dates=en.map(e=>e.datum).sort();if(dates.length)periodeStr=fmtDateSlash(dates[0])+' - '+fmtDateSlash(dates[dates.length-1]);}
-  doc.setFontSize(10);doc.setFont(undefined,'normal');doc.setTextColor(60);
-  doc.text('Periode: '+periodeStr,ml,y);
-  y+=8;
-  doc.setDrawColor(180);doc.setLineWidth(0.3);doc.line(ml,y,W-mr,y);
-  y+=6;
+  const dates=en.map(e=>e.datum).sort();
+  const periodeStr=dates.length?(fmtDateSlash(dates[0])+(dates[dates.length-1]!==dates[0]?' — '+fmtDateSlash(dates[dates.length-1]):'')):'';
+  if(periodeStr){doc.setFontSize(10);doc.setFont(undefined,'normal');doc.setTextColor(60);doc.text('Periode: '+periodeStr,ml,y);y+=6;}
+  if(selIds.length){doc.setFontSize(9);doc.setFont(undefined,'italic');doc.setTextColor(100);doc.text(selIds.length+' geselecteerde registraties',ml,y);y+=5;}
+  y+=3;
+  doc.setDrawColor(180);doc.setLineWidth(0.3);doc.line(ml,y,W-mr,y);y+=6;
 
   const sorted=[...en].sort((a,b)=>a.datum.localeCompare(b.datum));
-  // Determine if we show project column
   const hasProjects=sorted.some(e=>e.project);
-  const head=[hasProjects?['Datum','Project','Activiteit','Omschrijving','Uren']:['Datum','Activiteit','Omschrijving','Uren']];
-  const body=sorted.map(e=>hasProjects?[fmtDate(e.datum),e.project||'',e.activiteit||'',e.omschrijving||'',fmt(e.uren)]:[fmtDate(e.datum),e.activiteit||'',e.omschrijving||'',fmt(e.uren)]);
+  // Kolommen: datum / [project] / omschrijving / uren / decimaal
+  const head=[hasProjects
+    ?['Datum','Project','Omschrijving','Uren','Decimaal']
+    :['Datum','Omschrijving','Uren','Decimaal']];
+  const body=sorted.map(e=>hasProjects
+    ?[fmtDate(e.datum),e.project||'',e.omschrijving||'',fmt(e.uren),fmtDec(e.uren)]
+    :[fmtDate(e.datum),e.omschrijving||'',fmt(e.uren),fmtDec(e.uren)]);
   const totalU=en.reduce((s,e)=>s+e.uren,0);
 
-  const descW=hasProjects?W-ml-mr-30-28-24-22:W-ml-mr-30-28-22;
+  const fixedW=hasProjects?(30+30+22+22):(30+22+22);
+  const descW=W-ml-mr-fixedW;
   doc.autoTable({
     startY:y,head,body,
-    headStyles:{fillColor:null,textColor:40,fontStyle:'bold',fontSize:10,lineWidth:{bottom:0.5},lineColor:40},
-    bodyStyles:{fontSize:10,textColor:50,lineWidth:{bottom:0.3},lineColor:200},
+    headStyles:{fillColor:null,textColor:40,fontStyle:'bold',fontSize:9.5},
+    bodyStyles:{fontSize:9.5,textColor:50},
     columnStyles:hasProjects?{
-      0:{cellWidth:30},1:{cellWidth:28},2:{cellWidth:24},3:{cellWidth:descW},4:{cellWidth:22,halign:'right',fontStyle:'bold'}
+      0:{cellWidth:30},1:{cellWidth:30},2:{cellWidth:descW},3:{cellWidth:22,halign:'right',fontStyle:'bold'},4:{cellWidth:22,halign:'right'}
     }:{
-      0:{cellWidth:30},1:{cellWidth:28},2:{cellWidth:descW},3:{cellWidth:22,halign:'right',fontStyle:'bold'}
+      0:{cellWidth:30},1:{cellWidth:descW},2:{cellWidth:22,halign:'right',fontStyle:'bold'},3:{cellWidth:22,halign:'right'}
     },
-    margin:{left:ml,right:mr},tableLineWidth:0,
+    margin:{left:ml,right:mr},
     didParseCell:function(data){
+      const isLast=data.row.index===body.length-1;
       if(data.section==='head'){data.cell.styles.fillColor=false;data.cell.styles.lineWidth={bottom:0.5,top:0,left:0,right:0};data.cell.styles.lineColor=40;}
       else{data.cell.styles.lineWidth={bottom:0.3,top:0,left:0,right:0};data.cell.styles.lineColor=200;}
     }
@@ -886,7 +907,7 @@ function downloadUrenspec(){
   doc.text(fmtDec(totalU),W-mr,y,{align:'right'});
 
   const klantNaam=klant?klant.naam.replace(/[^a-zA-Z0-9]/g,'-'):'';
-  const periodeSlug=van?van.slice(0,7):'';
+  const periodeSlug=dates.length?dates[0].slice(0,7):'';
   doc.save((klantNaam?klantNaam+'-':'')+'urenspec'+(periodeSlug?'-'+periodeSlug:'')+'.pdf');
 }
 

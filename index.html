@@ -2366,6 +2366,46 @@ function openFacDetail(id){
   panel.scrollTop=0;
 }
 
+// Base64 weegt ongeveer een derde meer dan het oorspronkelijke bestand.
+function bijlageGrootte(b){
+  const bytes=Math.round((b.data||'').length*0.75);
+  if(bytes>1048576)return(bytes/1048576).toFixed(1).replace('.',',')+' MB';
+  return Math.max(1,Math.round(bytes/1024))+' kB';
+}
+// Foto's van een telefoon wegen al snel vier megabyte. Ze worden verkleind
+// naar maximaal 1600 pixels en als JPEG bewaard, wat voor een bonnetje ruim
+// leesbaar blijft maar tot twintig keer lichter is.
+const FOTO_MAX=1600, FOTO_KWALITEIT=0.72;
+function verkleinAfbeelding(file){
+  return new Promise((klaar)=>{
+    const lezer=new FileReader();
+    lezer.onload=e=>{
+      const img=new Image();
+      img.onload=()=>{
+        try{
+          let{width:w,height:h}=img;
+          const schaal=Math.min(1,FOTO_MAX/Math.max(w,h));
+          w=Math.round(w*schaal);h=Math.round(h*schaal);
+          const c=document.createElement('canvas');c.width=w;c.height=h;
+          const ctx=c.getContext('2d');
+          ctx.fillStyle='#fff';ctx.fillRect(0,0,w,h);
+          ctx.drawImage(img,0,0,w,h);
+          const uri=c.toDataURL('image/jpeg',FOTO_KWALITEIT);
+          const data=uri.split(',')[1];
+          // Alleen gebruiken als het effectief kleiner is.
+          if(data.length<e.target.result.split(',')[1].length)
+            klaar({data,mime:'image/jpeg',verkleind:true});
+          else klaar({data:e.target.result.split(',')[1],mime:file.type,verkleind:false});
+        }catch(err){
+          klaar({data:e.target.result.split(',')[1],mime:file.type,verkleind:false});
+        }
+      };
+      img.onerror=()=>klaar({data:e.target.result.split(',')[1],mime:file.type,verkleind:false});
+      img.src=e.target.result;
+    };
+    lezer.readAsDataURL(file);
+  });
+}
 function fdpRenderBijlagen(f){
   const lijst=document.getElementById('fdp-bijlagen-lijst');
   const bijlagen=f.bijlagen||[];
@@ -2374,6 +2414,7 @@ function fdpRenderBijlagen(f){
     <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);">
       <span style="font-size:18px;">${b.type==='pdf'?'📄':'🖼'}</span>
       <span style="font-size:13px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${b.naam}</span>
+      <span style="font-size:11px;color:var(--text3);white-space:nowrap;">${bijlageGrootte(b)}</span>
       <button class="btn btn-sm" onclick="fdpDownloadBijlage(${i})" title="Download">↓</button>
       <button class="btn btn-sm btn-danger" onclick="fdpDelBijlage(${i})" title="Verwijder">✕</button>
     </div>`).join('');
@@ -2460,13 +2501,25 @@ async function fdpVoegBestandenToe(files){
     const isPdf=file.type==='application/pdf';
     const isImg=file.type.startsWith('image/');
     if(!isPdf&&!isImg){alert(file.name+' is geen PDF of afbeelding.');continue;}
-    const data=await new Promise((res,rej)=>{
-      const r=new FileReader();
-      r.onload=e=>res(e.target.result.split(',')[1]);
-      r.onerror=rej;
-      r.readAsDataURL(file);
-    });
-    f.bijlagen.push({naam:file.name,type:isPdf?'pdf':'img',mime:file.type,data});
+    // Een PDF kan niet in de browser worden verkleind, dus die wordt enkel
+    // gemeld als ze zwaar is. Een afbeelding wordt wel verkleind.
+    if(isPdf&&file.size>3*1024*1024){
+      const mb=(file.size/1048576).toFixed(1).replace('.',',');
+      if(!confirm(file.name+' weegt '+mb+' MB.\n\nDat is zwaar voor een bijlage en maakt het inladen van je facturen trager. Scan je bonnetjes bij voorkeur in zwart-wit of op lagere resolutie.\n\nToch toevoegen?'))continue;
+    }
+    let data, mime=file.type;
+    if(isImg){
+      const res=await verkleinAfbeelding(file);
+      data=res.data;mime=res.mime;
+    }else{
+      data=await new Promise((res,rej)=>{
+        const r=new FileReader();
+        r.onload=e=>res(e.target.result.split(',')[1]);
+        r.onerror=rej;
+        r.readAsDataURL(file);
+      });
+    }
+    f.bijlagen.push({naam:file.name,type:isPdf?'pdf':'img',mime,data});
   }
   fdpRenderBijlagen(f);
   try{await saveFactuur(f);}catch(e){console.error('SB save bijlage:',e);}

@@ -289,6 +289,7 @@ input[type=checkbox]{width:auto;accent-color:var(--purple);}
       <div id="fp-betaling" style="margin-top:1rem;font-size:12px;color:var(--text2);"></div>
       <div class="btn-row">
         <button class="btn" onclick="opslaanFac()">💾 Opslaan</button>
+        <button class="btn" onclick="mailFactuur()" id="btn-mail-fac" title="Verstuur factuur PDF via je Outlook">✉ Mail naar klant</button>
         <button class="btn btn-primary" onclick="downloadFactuurPDF()">↓ Download factuur PDF</button>
       </div>
     </div>
@@ -807,6 +808,14 @@ function exportCSV(){
 }
 
 // PDF HEADER
+function pdfSaveAs(doc,filename){
+  const blob=doc.output('blob');
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;a.download=filename;a.style.display='none';
+  document.body.appendChild(a);a.click();
+  setTimeout(()=>{URL.revokeObjectURL(url);a.remove();},1000);
+}
 function pdfHeader(doc,s){
   const W=210,ml=20,mr=20;
   // Logo: horizontale lijnen met donkergroene cirkel in het midden
@@ -908,7 +917,7 @@ function downloadUrenspec(){
 
   const klantNaam=klant?klant.naam.replace(/[^a-zA-Z0-9]/g,'-'):'';
   const periodeSlug=dates.length?dates[0].slice(0,7):'';
-  doc.save((klantNaam?klantNaam+'-':'')+'urenspec'+(periodeSlug?'-'+periodeSlug:'')+'.pdf');
+  pdfSaveAs(doc,(klantNaam?klantNaam+'-':'')+'urenspec'+(periodeSlug?'-'+periodeSlug:'')+'.pdf');
 }
 
 // FACTUUR
@@ -1056,9 +1065,9 @@ function renderFac(){
   document.getElementById('fp-betaling').textContent=iban?`Gelieve te betalen op rekeningnummer ${iban}${nummer?' met referte '+nummer:''}.`:'';
 }
 
-function buildFactuurPDF(d){
+function buildFactuurPDF(d,externalDoc,returnDoc){
   const{jsPDF}=window.jspdf;
-  const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
+  const doc=externalDoc||new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
   const s=d.settings;const W=210,ml=20,mr=20;
   let y=pdfHeader(doc,s);
   const cl=d.c;
@@ -1215,7 +1224,7 @@ function buildFactuurPDF(d){
       }
     });
   }
-  doc.save(d.nummer+'.pdf');
+  if(!returnDoc)pdfSaveAs(doc,d.nummer+'.pdf');
 }
 function downloadFactuurPDF(){const fd=getFacData();if(!fd.c){alert('Kies eerst een klant.');return;}buildFactuurPDF({...fd,settings:db.settings});}
 async function opslaanFac(){
@@ -1678,6 +1687,120 @@ async function initFromSupabase(){
     alert('Kon data niet laden van de cloud. Controleer je internetverbinding.\n\n'+err.message);
   }finally{
     if(loadingEl)loadingEl.style.display='none';
+  }
+}
+
+// ===== MICROSOFT GRAPH MAIL =====
+const MSAL_CONFIG={
+  clientId:'c57d1a03-f913-44c2-8d51-986193bd66ca',
+  authority:'https://login.microsoftonline.com/a41b5cee-bc48-4052-99e8-ab6e24cbd691',
+  redirectUri:window.location.origin+window.location.pathname
+};
+let _msalInstance=null;
+let _graphToken=null;
+
+async function getMsalInstance(){
+  if(_msalInstance)return _msalInstance;
+  // Dynamisch laden van MSAL
+  if(!window.msal){
+    await new Promise((resolve,reject)=>{
+      const s=document.createElement('script');
+      s.src='https://cdnjs.cloudflare.com/ajax/libs/microsoft-authentication-library/3.27.0/msal-browser.min.js';
+      s.onload=resolve;s.onerror=reject;
+      document.head.appendChild(s);
+    });
+  }
+  _msalInstance=new msal.PublicClientApplication({
+    auth:{clientId:MSAL_CONFIG.clientId,authority:MSAL_CONFIG.authority,redirectUri:MSAL_CONFIG.redirectUri},
+    cache:{cacheLocation:'sessionStorage',storeAuthStateInCookie:false}
+  });
+  await _msalInstance.initialize();
+  return _msalInstance;
+}
+
+async function getGraphToken(){
+  if(_graphToken)return _graphToken;
+  const msalInst=await getMsalInstance();
+  const scopes=['Mail.Send','User.Read'];
+  // Probeer silent token (al ingelogd)
+  const accounts=msalInst.getAllAccounts();
+  if(accounts.length>0){
+    try{
+      const resp=await msalInst.acquireTokenSilent({scopes,account:accounts[0]});
+      _graphToken=resp.accessToken;
+      return _graphToken;
+    }catch(e){/* silent mislukt, ga naar popup */}
+  }
+  // Popup login
+  const resp=await msalInst.acquireTokenPopup({scopes});
+  _graphToken=resp.accessToken;
+  return _graphToken;
+}
+
+async function mailFactuur(){
+  const fd=getFacData();
+  if(!fd.c){alert('Kies eerst een klant.');return;}
+  const klantEmail=fd.c.email;
+  if(!klantEmail){alert('Deze klant heeft geen e-mailadres. Voeg het toe bij de klantgegevens.');return;}
+
+  const btn=document.getElementById('btn-mail-fac');
+  const origText=btn.textContent;
+  btn.textContent='⏳ Bezig...';btn.disabled=true;
+
+  try{
+    // Genereer PDF als base64
+    const{jsPDF}=window.jspdf;
+    const tmpDoc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
+    buildFactuurPDF({...fd,settings:db.settings},tmpDoc,true);
+    const pdfB64=tmpDoc.output('datauristring').split(',')[1];
+    const filename=(fd.nummer||'factuur')+'.pdf';
+
+    // Haal token op (login popup indien nodig)
+    const token=await getGraphToken();
+
+    // Bouw mail body
+    const klantNaam=fd.c.naam||klantEmail;
+    const facNr=fd.nummer||'factuur';
+    const subject='Factuur '+facNr+' — FootPrints SRL';
+    const bodyHtml=`<p>Beste ${klantNaam},</p>
+<p>Gelieve bijgevoegde factuur ${facNr} te willen voldoen vóór de vervaldatum vermeld op het document.</p>
+<p>Bij vragen staan wij u graag te woord.</p>
+<p>Met vriendelijke groeten,<br>${db.settings.naam||'FootPrints SRL'}</p>`;
+
+    const mailPayload={
+      message:{
+        subject,
+        body:{contentType:'HTML',content:bodyHtml},
+        toRecipients:[{emailAddress:{address:klantEmail,name:klantNaam}}],
+        attachments:[{
+          '@odata.type':'#microsoft.graph.fileAttachment',
+          name:filename,
+          contentType:'application/pdf',
+          contentBytes:pdfB64
+        }]
+      },
+      saveToSentItems:true
+    };
+
+    const resp=await fetch('https://graph.microsoft.com/v1.0/me/sendMail',{
+      method:'POST',
+      headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},
+      body:JSON.stringify(mailPayload)
+    });
+    if(!resp.ok){
+      const err=await resp.text();
+      throw new Error('Graph API fout: '+resp.status+' '+err);
+    }
+    alert('✅ Factuur '+facNr+' verstuurd naar '+klantEmail);
+  }catch(e){
+    console.error('Mail fout:',e);
+    // Token verlopen — reset en probeer opnieuw
+    if(e.message&&(e.message.includes('401')||e.message.includes('token'))){
+      _graphToken=null;
+    }
+    alert('❌ Mail versturen mislukt:\n'+e.message);
+  }finally{
+    btn.textContent=origText;btn.disabled=false;
   }
 }
 

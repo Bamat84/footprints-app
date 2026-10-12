@@ -1712,7 +1712,34 @@ function herdownload(id){
   const allRegels=facRegels(f,false);
   buildFactuurPDF({c,btwPct:f.btwPct||21,nummer:f.nummer,po:f.po||'',datum:f.datum,vervaldag:f.vervaldag||'',kenmerk:f.kenmerk||'',allRegels,subtotaal:f.subtotaal,btwBedrag:f.btwBedrag,totaal:f.totaal,settings:db.settings});
 }
-async function delFac(id){if(confirm('Factuur verwijderen?')){db.facturen=db.facturen.filter(f=>f.id!==id);renderFL();try{await sbDelete('facturen','id=eq.'+id);}catch(e){console.error('SB delete factuur:',e);}}}
+// Een factuurnummer vergelijkbaar maken: 2026027 wordt 2026027, CN-2026-003
+// wordt 2026003. Zo weten we of een verwijderd nummer het laatste was.
+function facNrWaarde(nummer){
+  const cijfers=String(nummer||'').replace(/\D/g,'');
+  return cijfers?parseInt(cijfers,10):0;
+}
+async function delFac(id){
+  const f=db.facturen.find(x=>x.id===id);
+  if(!f)return;
+  const isCN=!!f.creditnota;
+  const teller=isCN?'cnnr':'facnr';
+  const rest=db.facturen.filter(x=>x.id!==id&&!!x.creditnota===isCN);
+  // Het nummer komt alleen vrij als er geen hoger nummer meer in gebruik is.
+  const vrij=!rest.some(x=>facNrWaarde(x.nummer)>=facNrWaarde(f.nummer));
+  const vraag='Factuur '+f.nummer+' verwijderen?'+
+    (vrij?'\n\nHet nummer '+f.nummer+' komt vrij en wordt opnieuw voorgesteld bij je volgende factuur.'
+        :'\n\nLet op: er bestaan al hogere nummers, dus '+f.nummer+' komt niet vrij. Een gat in de nummering laat je beter staan, maak er een creditnota van als de factuur al verstuurd is.');
+  if(!confirm(vraag))return;
+  db.facturen=db.facturen.filter(x=>x.id!==id);
+  if(vrij){
+    db.settings[teller]=f.nummer;
+    try{await saveSettings();}catch(e){console.error('SB save settings:',e);}
+    const veld=document.getElementById('f-nummer');
+    if(veld&&!isCN)veld.value=f.nummer;
+  }
+  renderFL();renderDash();
+  try{await sbDelete('facturen','id=eq.'+id);}catch(e){console.error('SB delete factuur:',e);}
+}
 
 
 // KLANTEN

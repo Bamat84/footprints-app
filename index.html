@@ -8,7 +8,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
-:root{--bg:#fff;--bg2:#f7f7f5;--bg3:#f0efe9;--text:#1a1a18;--text2:#6b6b67;--text3:#a8a8a2;--border:#e0dfd8;--border2:#c8c7bf;--purple:#534AB7;--purple-l:#EEEDFE;--purple-d:#3C3489;--r:8px;--rl:12px;}
+:root{--bg:#fff;--bg2:#f7f7f5;--bg3:#F5F3EE;--text:#1a1a18;--text2:#6b6b67;--text3:#a8a8a2;--border:#e0dfd8;--border2:#c8c7bf;--purple:#1B4F40;--purple-l:#EAF1ED;--purple-d:#153D31;--r:8px;--rl:12px;}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg3);color:var(--text);font-size:14px;min-height:100vh;}
 .shell{display:grid;grid-template-columns:210px 1fr;min-height:100vh;}
 .sidebar{background:var(--bg);border-right:1px solid var(--border);padding:1.5rem 0;display:flex;flex-direction:column;}
@@ -61,7 +61,7 @@ input[type=checkbox]{width:auto;accent-color:var(--purple);}
 <body>
 <div id="sb-loading" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(255,255,255,0.85);z-index:9999;align-items:center;justify-content:center;flex-direction:column;gap:16px;">
   <div style="font-size:28px;">⏳</div>
-  <div style="font-size:15px;color:#534AB7;font-weight:500;">Data laden uit de cloud...</div>
+  <div style="font-size:15px;color:#1B4F40;font-weight:500;">Data laden uit de cloud...</div>
 </div>
 <div id="backup-banner" style="display:none;background:#FEF3C7;border-bottom:2px solid #F59E0B;padding:10px 20px;font-size:13px;color:#78350F;display:flex;align-items:center;gap:12px;">
   <span>⚠️ <strong id="backup-banner-msg"></strong></span>
@@ -691,27 +691,29 @@ function exportCSV(){
 // PDF HEADER
 function pdfHeader(doc,s){
   const W=210,ml=20,mr=20;
-  // Logo: horizontale lijnen met cirkel in het midden
-  const cy=18,lw=60;
+  // Logo: horizontale lijnen met donkergroene cirkel in het midden
+  const cy=18;
   const cx=W/2;
-  doc.setDrawColor(160);doc.setLineWidth(0.3);
-  doc.line(ml,cy,cx-8,cy);
-  doc.setFillColor(235,235,235);doc.circle(cx,cy,7,'F');
-  doc.setDrawColor(160);doc.setLineWidth(0.3);doc.circle(cx,cy,7,'S');
-  doc.setFontSize(6.5);doc.setTextColor(80);doc.setFont(undefined,'bold');
-  doc.text('Lex/',cx,cy-0.5,{align:'center'});
-  doc.setFont(undefined,'normal');
-  doc.text('IT',cx,cy+3,{align:'center'});
-  doc.setDrawColor(160);doc.setLineWidth(0.3);
-  doc.line(cx+8,cy,W-mr,cy);
+  doc.setDrawColor(180);doc.setLineWidth(0.3);
+  doc.line(ml,cy,cx-9,cy);
+  // Groene cirkel
+  doc.setFillColor(27,79,64);doc.circle(cx,cy,8,'F');
+  // "Lex/IT" als één tekst op één lijn in de cirkel
+  doc.setFontSize(6);doc.setTextColor(255,255,255);doc.setFont(undefined,'bold');
+  doc.text('Lex/IT',cx,cy+0.5,{align:'center'});
+  // Subtekst onder de tekst
+  doc.setFontSize(4);doc.setFont(undefined,'normal');
+  doc.text('since 2017',cx,cy+3.5,{align:'center'});
+  doc.setDrawColor(180);doc.setLineWidth(0.3);
+  doc.line(cx+9,cy,W-mr,cy);
   // Afzender rechtsboven: naam, adres, stad, BTW (geen tel/email)
   const lines=[];
-  if(s.naam)lines.push({t:s.naam,bold:false,sz:9});
-  if(s.adres)lines.push({t:s.adres,bold:false,sz:9});
-  if(s.plaats)lines.push({t:s.plaats,bold:false,sz:9});
-  if(s.btw)lines.push({t:s.btw,bold:false,sz:9});
+  if(s.naam)lines.push({t:s.naam,sz:9});
+  if(s.adres)lines.push({t:s.adres,sz:9});
+  if(s.plaats)lines.push({t:s.plaats,sz:9});
+  if(s.btw)lines.push({t:s.btw,sz:9});
   let ay=10;
-  lines.forEach(l=>{doc.setFontSize(l.sz);doc.setFont(undefined,l.bold?'bold':'normal');doc.setTextColor(50);doc.text(l.t,W-mr,ay,{align:'right'});ay+=5;});
+  lines.forEach(l=>{doc.setFontSize(l.sz);doc.setFont(undefined,'normal');doc.setTextColor(50);doc.text(l.t,W-mr,ay,{align:'right'});ay+=5;});
   return Math.max(ay+6,38);
 }
 
@@ -990,15 +992,20 @@ function buildFactuurPDF(d){
   ];
   trows.forEach(r=>{
     if(r[2]){
-      // Dunne lijn boven de totaalregel
-      doc.setDrawColor(40);doc.setLineWidth(0.3);doc.line(lx,y-2,vx,y-2);
+      // Lijn boven totaalregel, met genoeg ruimte zodat het niet doorgestreept lijkt
+      y+=3;
+      doc.setDrawColor(80);doc.setLineWidth(0.3);doc.line(lx,y-1.5,vx,y-1.5);
+      y+=4;
       doc.setFontSize(10);doc.setFont(undefined,'normal');doc.setTextColor(20);
+      doc.text(r[0],lx,y);
+      doc.text(r[1],vx,y,{align:'right'});
+      y+=7;
     }else{
       doc.setFontSize(9);doc.setFont(undefined,'normal');doc.setTextColor(60);
+      doc.text(r[0],lx,y);
+      doc.text(r[1],vx,y,{align:'right'});
+      y+=5;
     }
-    doc.text(r[0],lx,y);
-    doc.text(r[1],vx,y,{align:'right'});
-    y+=r[2]?7:5;
   });
   // Betalingslijn onderaan
   if(s.iban){

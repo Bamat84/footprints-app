@@ -205,10 +205,24 @@ input[type=checkbox]{width:auto;accent-color:var(--purple);}
   <div class="tab-pane active" id="fac-nieuw">
     <div class="card">
       <h2>Factuurgegevens</h2>
-      <div class="fr c3">
+      <div class="fr c2" style="margin-bottom:10px;">
         <div><label>Klant</label><select id="f-klant" onchange="fKlantChange()"><option value="">— kies klant —</option></select></div>
-        <div><label>Periode</label><input         <div><label>Periode</label><input type="text" id="f-periode" placeholder="bv. oktober 2026" onchange="renderFac()"></div> id="f-periode" onchange="renderFac()"></div>
-        <div><label>BTW %</label><input type="number" id="f-btw" value="21" min="0" max="100" onchange="renderFac()"></div>
+        <div><label>Type factuur</label>
+          <div style="display:flex;gap:16px;padding:9px 0;">
+            <label style="display:flex;align-items:center;gap:6px;color:var(--text);font-size:13px;cursor:pointer;margin:0;">
+              <input type="radio" name="factype" value="uren" checked onchange="facTypeChange()" style="width:auto;accent-color:var(--purple);"> Uren-factuur
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;color:var(--text);font-size:13px;cursor:pointer;margin:0;">
+              <input type="radio" name="factype" value="vrij" onchange="facTypeChange()" style="width:auto;accent-color:var(--purple);"> Vrije factuur
+            </label>
+          </div>
+        </div>
+      </div>
+      <!-- Uren-filter: enkel bij uren-factuur -->
+      <div id="f-uren-filter" class="fr c3" style="margin-bottom:10px;">
+        <div><label>Uren van</label><input type="date" id="f-van" onchange="renderFac()"></div>
+        <div><label>Uren tot en met</label><input type="date" id="f-tot" onchange="renderFac()"></div>
+        <div><label>Periode label (op factuur)</label><input type="text" id="f-periode" placeholder="bv. oktober 2026" oninput="renderFac()"></div>
       </div>
       <div class="fr c4">
         <div><label>Factuurnummer</label><input type="text" id="f-nummer" oninput="renderFac()"></div>
@@ -216,13 +230,14 @@ input[type=checkbox]{width:auto;accent-color:var(--purple);}
         <div><label>Factuurdatum</label><input type="date" id="f-datum" oninput="calcVervaldag()"></div>
         <div><label>Betalingstermijn (dagen)</label><input type="number" id="f-termijn" value="30" min="0" oninput="calcVervaldag()"></div>
       </div>
-      <div class="fr c2">
+      <div class="fr c3">
         <div><label>Vervaldatum</label><input type="date" id="f-vervaldag" oninput="renderFac()"></div>
         <div><label>Kenmerk / mededeling</label><input type="text" id="f-kenmerk" placeholder="Optioneel" oninput="renderFac()"></div>
+        <div><label>BTW %</label><input type="number" id="f-btw" value="21" min="0" max="100" onchange="renderFac()"></div>
       </div>
     </div>
     <div class="card">
-      <h2>Extra regels</h2>
+      <h2 id="extra-regels-titel">Extra regels</h2>
       <div class="tabs" style="margin-bottom:1rem;">
         <button class="tab-btn active" onclick="regelTab('vrij')">Vrije regel</button>
         <button class="tab-btn" onclick="regelTab('onkost')">Onkost</button>
@@ -763,16 +778,30 @@ function downloadUrenspec(){
 
 // FACTUUR
 let facExtra=[];
+function getFacType(){return document.querySelector('input[name="factype"]:checked')?.value||'uren';}
+function facTypeChange(){
+  const isUren=getFacType()==='uren';
+  document.getElementById('f-uren-filter').style.display=isUren?'':'none';
+  document.getElementById('extra-regels-titel').textContent=isUren?'Extra regels':'Factuurregels';
+  renderFac();
+}
 function initFac(){
   fillSels();
   const t=td();
   if(!document.getElementById('f-datum').value)document.getElementById('f-datum').value=t;
-  if(!document.getElementById('f-periode').value)document.getElementById('f-periode').value=tm();
   if(!document.getElementById('f-nummer').value)document.getElementById('f-nummer').value=db.settings.facnr||'2026-001';
   document.getElementById('ok-datum').value=t;
+  // standaard van/tot: begin en einde huidige maand
+  if(!document.getElementById('f-van').value){
+    const now=new Date();
+    const y=now.getFullYear(),m=String(now.getMonth()+1).padStart(2,'0');
+    document.getElementById('f-van').value=y+'-'+m+'-01';
+    const lastDay=new Date(y,now.getMonth()+1,0).getDate();
+    document.getElementById('f-tot').value=y+'-'+m+'-'+String(lastDay).padStart(2,'0');
+  }
   calcVervaldag();
   facExtra=[];
-  renderFac();
+  facTypeChange();
 }
 function calcVervaldag(){
   const d=document.getElementById('f-datum').value;
@@ -800,6 +829,8 @@ function delExtra(id){facExtra=facExtra.filter(r=>r.id!==id);renderFac();}
 function getFacData(){
   const cid=parseInt(document.getElementById('f-klant').value);
   const periode=document.getElementById('f-periode').value;
+  const van=document.getElementById('f-van').value;
+  const tot=document.getElementById('f-tot').value;
   const btwPct=parseFloat(document.getElementById('f-btw').value)||0;
   const nummer=document.getElementById('f-nummer').value;
   const po=document.getElementById('f-po').value;
@@ -807,15 +838,21 @@ function getFacData(){
   const vervaldag=document.getElementById('f-vervaldag').value;
   const kenmerk=document.getElementById('f-kenmerk').value;
   const c=gc(cid);
-  let urenRegels=cid?db.entries.filter(e=>e.clientId===cid&&e.facturabel!==false):[];
-  if(periode)urenRegels=urenRegels.filter(e=>e.datum.startsWith(periode));
+  const isUren=getFacType()==='uren';
+  let urenRegels=[];
+  if(isUren&&cid){
+    urenRegels=db.entries.filter(e=>e.clientId===cid&&e.facturabel!==false);
+    if(van)urenRegels=urenRegels.filter(e=>e.datum>=van);
+    if(tot)urenRegels=urenRegels.filter(e=>e.datum<=tot);
+    urenRegels.sort((a,b)=>a.datum.localeCompare(b.datum));
+  }
   const allRegels=[
     ...urenRegels.map(e=>({type:'uren',datum:e.datum,omschrijving:e.omschrijving||'',activiteit:e.activiteit||'',aantal:e.uren,prijs:e.tarief,bedrag:e.uren*e.tarief})),
     ...facExtra.map(r=>({type:r.type,datum:r.datum,omschrijving:r.omschrijving,activiteit:'',aantal:1,prijs:r.bedrag,bedrag:r.bedrag}))
   ];
   const subtotaal=allRegels.reduce((s,r)=>s+r.bedrag,0);
   const btwBedrag=subtotaal*btwPct/100;
-  return{cid,c,periode,btwPct,nummer,po,datum,vervaldag,kenmerk,allRegels,subtotaal,btwBedrag,totaal:subtotaal+btwBedrag};
+  return{cid,c,periode,van,tot,btwPct,nummer,po,datum,vervaldag,kenmerk,allRegels,subtotaal,btwBedrag,totaal:subtotaal+btwBedrag};
 }
 function renderFac(){
   const{c,btwPct,nummer,po,datum,vervaldag,kenmerk,allRegels,subtotaal,btwBedrag,totaal}=getFacData();
@@ -844,7 +881,8 @@ function renderFac(){
   const nExtra=facExtra.length;
   const nUren=allRegels.length-nExtra;
   if(!allRegels.length){
-    tbody.innerHTML='<tr><td colspan="7" class="empty">Kies een klant en periode, of voeg regels toe</td></tr>';
+    const isU=getFacType()==='uren';
+    tbody.innerHTML='<tr><td colspan="7" class="empty">'+(isU?'Kies een klant en datumperiode, of voeg extra regels toe':'Voeg factuurregels toe via de knoppen hieronder')+'</td></tr>';
   }else{
     tbody.innerHTML=allRegels.map((r,i)=>`<tr>
       <td style="color:var(--text2);white-space:nowrap">${r.datum?fmtDate(r.datum):'—'}</td>
@@ -913,7 +951,8 @@ function buildFactuurPDF(d){
 function downloadFactuurPDF(){const fd=getFacData();if(!fd.c){alert('Kies eerst een klant.');return;}buildFactuurPDF({...fd,settings:db.settings});}
 async function opslaanFac(){
   const fd=getFacData();if(!fd.c){alert('Kies eerst een klant.');return;}
-  const newFac={id:db.nextId++,nummer:fd.nummer,po:fd.po,klant:fd.c.naam,klant_id:fd.cid,datum:fd.datum,vervaldag:fd.vervaldag,kenmerk:fd.kenmerk,totaal:fd.totaal,subtotaal:fd.subtotaal,btw_bedrag:fd.btwBedrag,btw_pct:fd.btwPct,extra:[...facExtra],periode:document.getElementById('f-periode').value};
+  const periodeLabel=document.getElementById('f-periode').value||(fd.van&&fd.tot?fd.van.slice(0,7):'');
+  const newFac={id:db.nextId++,nummer:fd.nummer,po:fd.po,klant:fd.c.naam,klant_id:fd.cid,datum:fd.datum,vervaldag:fd.vervaldag,kenmerk:fd.kenmerk,totaal:fd.totaal,subtotaal:fd.subtotaal,btw_bedrag:fd.btwBedrag,btw_pct:fd.btwPct,extra:[...facExtra],periode:periodeLabel};
   db.facturen.unshift(newFac);
   db.settings.facnr=nextFacNr();
   document.getElementById('f-nummer').value=db.settings.facnr;

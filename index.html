@@ -68,6 +68,16 @@ input[type=checkbox]{width:auto;accent-color:var(--purple);}
   <div style="font-size:28px;">⏳</div>
   <div style="font-size:15px;color:#1B4F40;font-weight:500;">Data laden uit de cloud...</div>
 </div>
+<div id="login-scherm" style="display:none;position:fixed;inset:0;z-index:9999;background:var(--bg3);align-items:center;justify-content:center;">
+  <div class="card" style="width:340px;max-width:92vw;">
+    <div style="font-size:18px;font-weight:600;margin-bottom:0.25rem;">Foot<span style="color:var(--purple)">Prints</span></div>
+    <div style="font-size:12px;color:var(--text2);margin-bottom:1.25rem;">Meld je aan om verder te gaan.</div>
+    <div style="margin-bottom:0.75rem;"><label>E-mail</label><input type="email" id="login-email" autocomplete="username" onkeydown="if(event.key==='Enter')doeAanmelden()"></div>
+    <div style="margin-bottom:1rem;"><label>Wachtwoord</label><input type="password" id="login-ww" autocomplete="current-password" onkeydown="if(event.key==='Enter')doeAanmelden()"></div>
+    <div id="login-fout" style="display:none;font-size:12px;color:#B91C1C;margin-bottom:0.75rem;"></div>
+    <button class="btn btn-primary" id="login-btn" onclick="doeAanmelden()" style="width:100%;justify-content:center;">Aanmelden</button>
+  </div>
+</div>
 <div id="vervallen-banner" style="display:none;background:#FEE2E2;border-bottom:2px solid #DC2626;padding:10px 20px;font-size:13px;color:#7F1D1D;align-items:center;gap:12px;">
   <span>🔔 <strong id="vervallen-banner-msg"></strong></span>
   <button class="btn btn-sm" onclick="naarFacturen('vervallen')" style="background:#DC2626;color:#fff;border-color:#B91C1C;">Bekijk ze</button>
@@ -498,6 +508,14 @@ input[type=checkbox]{width:auto;accent-color:var(--purple);}
     </div>
   </div>
   <div class="card">
+    <h2>Toegang</h2>
+    <p style="font-size:13px;color:var(--text2);margin-bottom:0.5rem;" id="s-aangemeld">Niet aangemeld</p>
+    <p style="font-size:12px;color:var(--text3);margin-bottom:1rem;">Je blijft aangemeld op dit toestel. Meld je af op een gedeelde computer.</p>
+    <div class="btn-row" style="justify-content:flex-start;margin-top:0;">
+      <button class="btn" onclick="afmelden()">Afmelden</button>
+    </div>
+  </div>
+  <div class="card">
     <h2>Backup &amp; herstel</h2>
     <p style="font-size:13px;color:var(--text2);margin-bottom:1rem;">Je data staat veilig in de cloud (Supabase). Je kunt een extra JSON-backup exporteren als noodkopie.</p>
     <div class="btn-row" style="justify-content:flex-start;margin-top:0;">
@@ -525,22 +543,126 @@ const DEFAULT_TARIEF = 125;
 const SB_URL = 'https://bqjcxsjzxvpgxsbpoeqp.supabase.co';
 const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJxamN4c2p6eHZwZ3hzYnBvZXFwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE3NjI0MTcsImV4cCI6MjEwNzMzODQxN30.Zfo4oZAgu5ykDLNE1rbrZTEgjBib7KSK_QUxtisdovI';
 
+// ===== AANMELDEN =====
+// De anon key hierboven is publiek en hoort dat te zijn. Wat hij mag doen,
+// bepaalt Row Level Security in Supabase. Elke oproep naar de database gaat
+// daarom met het token van de aangemelde gebruiker, niet met de anon key.
+let SB_SESSION = null;
+const SESSIE_SLEUTEL = 'fp_sessie';
+
+function laadSessie(){
+  try{
+    const raw=localStorage.getItem(SESSIE_SLEUTEL);
+    if(raw)SB_SESSION=JSON.parse(raw);
+  }catch(e){SB_SESSION=null;}
+}
+function bewaarSessie(s){
+  SB_SESSION=s;
+  try{
+    if(s)localStorage.setItem(SESSIE_SLEUTEL,JSON.stringify(s));
+    else localStorage.removeItem(SESSIE_SLEUTEL);
+  }catch(e){}
+}
+function sbToken(){return(SB_SESSION&&SB_SESSION.access_token)||SB_KEY;}
+function sbHeaders(extra){
+  return Object.assign({'apikey':SB_KEY,'Authorization':'Bearer '+sbToken()},extra||{});
+}
+function sessieVerlopen(){
+  if(!SB_SESSION||!SB_SESSION.verloopt_op)return true;
+  return Date.now()>SB_SESSION.verloopt_op-60000; // een minuut marge
+}
+function maakSessie(d){
+  return{access_token:d.access_token,refresh_token:d.refresh_token,
+    email:(d.user&&d.user.email)||'',
+    verloopt_op:Date.now()+((d.expires_in||3600)*1000)};
+}
+async function aanmelden(email,wachtwoord){
+  const r=await fetch(`${SB_URL}/auth/v1/token?grant_type=password`,{
+    method:'POST',
+    headers:{'apikey':SB_KEY,'Content-Type':'application/json'},
+    body:JSON.stringify({email,password:wachtwoord})
+  });
+  const d=await r.json().catch(()=>({}));
+  if(!r.ok)throw new Error(d.error_description||d.msg||d.message||'Aanmelden mislukt');
+  bewaarSessie(maakSessie(d));
+  return SB_SESSION;
+}
+async function vernieuwSessie(){
+  if(!SB_SESSION||!SB_SESSION.refresh_token)return false;
+  try{
+    const r=await fetch(`${SB_URL}/auth/v1/token?grant_type=refresh_token`,{
+      method:'POST',
+      headers:{'apikey':SB_KEY,'Content-Type':'application/json'},
+      body:JSON.stringify({refresh_token:SB_SESSION.refresh_token})
+    });
+    if(!r.ok){bewaarSessie(null);return false;}
+    const d=await r.json();
+    bewaarSessie(maakSessie(d));
+    return true;
+  }catch(e){return false;}
+}
+// Zorgt dat er een bruikbaar token is voor een oproep vertrekt.
+async function zorgVoorSessie(){
+  if(!SB_SESSION)return false;
+  if(sessieVerlopen())return await vernieuwSessie();
+  return true;
+}
+function toonLogin(melding){
+  const s=document.getElementById('login-scherm');
+  if(!s)return;
+  s.style.display='flex';
+  const f=document.getElementById('login-fout');
+  if(melding){f.textContent=melding;f.style.display='block';}else{f.style.display='none';}
+  const e=document.getElementById('login-email');
+  if(e&&!e.value&&SB_SESSION&&SB_SESSION.email)e.value=SB_SESSION.email;
+  setTimeout(()=>{(e&&!e.value?e:document.getElementById('login-ww')).focus();},50);
+}
+function verbergLogin(){
+  const s=document.getElementById('login-scherm');
+  if(s)s.style.display='none';
+  const w=document.getElementById('login-ww');
+  if(w)w.value='';
+}
+async function doeAanmelden(){
+  const btn=document.getElementById('login-btn');
+  const email=document.getElementById('login-email').value.trim();
+  const ww=document.getElementById('login-ww').value;
+  if(!email||!ww){toonLogin('Vul je e-mail en wachtwoord in.');return;}
+  btn.disabled=true;btn.textContent='Bezig…';
+  try{
+    await aanmelden(email,ww);
+    verbergLogin();
+    await startApp();
+  }catch(e){
+    toonLogin(/invalid/i.test(e.message)?'E-mail of wachtwoord klopt niet.':e.message);
+  }finally{
+    btn.disabled=false;btn.textContent='Aanmelden';
+  }
+}
+async function afmelden(){
+  try{
+    await fetch(`${SB_URL}/auth/v1/logout`,{method:'POST',headers:sbHeaders()});
+  }catch(e){}
+  bewaarSessie(null);
+  location.reload();
+}
+
 async function sbGet(table, params='') {
+  await zorgVoorSessie();
   const r = await fetch(`${SB_URL}/rest/v1/${table}?${params}&limit=10000`, {
-    headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY }
+    headers: sbHeaders()
   });
   if (!r.ok) throw new Error(await r.text());
   return r.json();
 }
 async function sbUpsert(table, data) {
+  await zorgVoorSessie();
   const r = await fetch(`${SB_URL}/rest/v1/${table}`, {
     method: 'POST',
-    headers: {
-      'apikey': SB_KEY,
-      'Authorization': 'Bearer ' + SB_KEY,
+    headers: sbHeaders({
       'Content-Type': 'application/json',
       'Prefer': 'resolution=merge-duplicates'
-    },
+    }),
     body: JSON.stringify(data)
   });
   if (!r.ok) throw new Error(await r.text());
@@ -552,9 +674,10 @@ async function sbUpsert(table, data) {
   try { return JSON.parse(txt); } catch (e) { return []; }
 }
 async function sbDelete(table, filter) {
+  await zorgVoorSessie();
   const r = await fetch(`${SB_URL}/rest/v1/${table}?${filter}`, {
     method: 'DELETE',
-    headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY }
+    headers: sbHeaders()
   });
   if (!r.ok) throw new Error(await r.text());
 }
@@ -2161,7 +2284,14 @@ async function initFromSupabase(){
     console.log('Loaded from Supabase:',db.clients.length,'clients,',db.entries.length,'entries');
   }catch(err){
     console.error('Supabase load error:',err);
-    alert('Kon data niet laden van de cloud. Controleer je internetverbinding.\n\n'+err.message);
+    // Een afgewezen of verlopen sessie geeft geen netwerkfout maar een
+    // weigering; dan hoort het inlogscherm te komen, geen foutmelding.
+    if(/JWT|401|403|not authorized|permission denied|row-level/i.test(String(err.message||''))){
+      bewaarSessie(null);
+      toonLogin('Je sessie is verlopen. Meld je opnieuw aan.');
+    }else{
+      alert('Kon data niet laden van de cloud. Controleer je internetverbinding.\n\n'+err.message);
+    }
   }finally{
     if(loadingEl)loadingEl.style.display='none';
   }
@@ -2537,8 +2667,16 @@ async function startup(){
   initDropzone();
   document.getElementById('u-activiteit').addEventListener('change',uActChange);
   document.getElementById('u-facturabel').addEventListener('change',uCalc);
+  laadSessie();
+  // Zonder geldige sessie eerst aanmelden; de data wordt pas daarna geladen.
+  if(!await zorgVoorSessie()){toonLogin();return;}
+  await startApp();
+}
+async function startApp(){
   await initFromSupabase();
   fillSels();renderU();loadSett();renderDash();checkVervallenBanner();
+  const el=document.getElementById('s-aangemeld');
+  if(el)el.textContent=SB_SESSION&&SB_SESSION.email?('Aangemeld als '+SB_SESSION.email):'Niet aangemeld';
 }
 startup();
 </script>

@@ -207,7 +207,7 @@ input[type=checkbox]{width:auto;accent-color:var(--purple);}
       <h2>Factuurgegevens</h2>
       <div class="fr c3">
         <div><label>Klant</label><select id="f-klant" onchange="fKlantChange()"><option value="">— kies klant —</option></select></div>
-        <div><label>Periode</label><input type="month" id="f-periode" onchange="renderFac()"></div>
+        <div><label>Periode</label><input         <div><label>Periode</label><input type="text" id="f-periode" placeholder="bv. oktober 2026" onchange="renderFac()"></div> id="f-periode" onchange="renderFac()"></div>
         <div><label>BTW %</label><input type="number" id="f-btw" value="21" min="0" max="100" onchange="renderFac()"></div>
       </div>
       <div class="fr c4">

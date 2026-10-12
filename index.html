@@ -445,6 +445,9 @@ input[type=checkbox]{width:auto;accent-color:var(--purple);}
 </main>
 </div>
 <script>
+// Terugvaltarief wanneer een klant in Supabase geen tarief heeft staan.
+const DEFAULT_TARIEF = 125;
+
 // ===== SUPABASE CONFIG =====
 const SB_URL = 'https://bqjcxsjzxvpgxsbpoeqp.supabase.co';
 const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJxamN4c2p6eHZwZ3hzYnBvZXFwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE3NjI0MTcsImV4cCI6MjEwNzMzODQxN30.Zfo4oZAgu5ykDLNE1rbrZTEgjBib7KSK_QUxtisdovI';
@@ -542,11 +545,21 @@ async function saveEntry(entry){
 async function saveClient(c){
   const row={
     id:c.id, nr:c.nr||null, naam:c.naam,
-    adres:c.adres||null, btw:c.btw||null,
-    email:c.email||null, tel:c.tel||null,
-    project:c.project||null, actief:!c.archived
+    adres:c.adres||null, plaats:c.plaats||null, land:c.land||null,
+    btw:c.btw||null, email:c.email||null, tel:c.tel||null,
+    tarief:c.tarief||null, project:c.project||null, actief:!c.archived
   };
-  await sbUpsert('clients',[row]);
+  try{
+    await sbUpsert('clients',[row]);
+  }catch(e){
+    // Bestaat de kolom plaats/land/tarief nog niet in Supabase, dan valt de
+    // save terug op de oude kolommen in plaats van helemaal te mislukken.
+    if(!/PGRST204|schema cache|column/i.test(String(e&&e.message||e)))throw e;
+    const basis=Object.assign({},row);
+    delete basis.plaats; delete basis.land; delete basis.tarief;
+    await sbUpsert('clients',[basis]);
+    console.warn('De clients-tabel mist de kolommen plaats, land of tarief. Die velden zijn niet bewaard — voeg de kolommen toe in Supabase.');
+  }
 }
 async function saveSettings(){
   const s=db.settings;
@@ -1641,7 +1654,9 @@ function sbEntryToLocal(r){
 }
 function sbClientToLocal(r){
   return{id:r.id,nr:r.nr||'',naam:r.naam,adres:r.adres||'',
+    plaats:r.plaats||'',land:r.land||'',
     btw:r.btw||'',email:r.email||'',tel:r.tel||'',
+    tarief:r.tarief!=null?parseFloat(r.tarief):DEFAULT_TARIEF,
     project:r.project||'',actief:r.actief!==false,
     archived:r.actief===false,color:'c0'};
 }

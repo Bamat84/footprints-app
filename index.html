@@ -73,6 +73,12 @@ input[type=checkbox]{width:auto;accent-color:var(--purple);}
   <button class="btn btn-sm" onclick="exportBackup();dismissBanner()" style="background:#F59E0B;color:#fff;border-color:#D97706;">↓ Nu exporteren</button>
   <button class="btn btn-sm" onclick="dismissBanner()" style="margin-left:auto;">Later</button>
 </div>
+<div id="vervallen-banner" style="display:none;background:#FEE2E2;border-bottom:2px solid #DC2626;padding:10px 20px;font-size:13px;color:#7F1D1D;align-items:center;gap:12px;">
+  <span>🔔 <strong id="vervallen-banner-msg"></strong></span>
+  <button class="btn btn-sm" onclick="naarFacturen('vervallen')" style="background:#DC2626;color:#fff;border-color:#B91C1C;">Bekijk ze</button>
+  <button class="btn btn-sm" onclick="herinneringenKlaarzetten()">✉ Herinneringen klaarzetten</button>
+  <button class="btn btn-sm" onclick="dismissVervallen()" style="margin-left:auto;">Later</button>
+</div>
 <div class="shell">
 <aside class="sidebar">
   <div class="logo">Foot<span>Prints</span></div>
@@ -1980,6 +1986,41 @@ function markGefactureerd(){
 function checkBackupBanner(){/* data is in Supabase cloud — no local backup needed */}
 function dismissBanner(){document.getElementById('backup-banner').style.display='none';}
 
+// ===== BALK VOOR VERVALLEN FACTUREN =====
+// Verschijnt bij het openen van de app als er iets te laat is. Eén keer per
+// dag wegklikbaar, zodat hij de dag erna opnieuw opduikt zolang het open staat.
+function checkVervallenBanner(){
+  const bar=document.getElementById('vervallen-banner');
+  if(!bar)return;
+  const laat=db.facturen.filter(f=>dagenTeLaat(f)!==null);
+  if(!laat.length||localStorage.getItem('vervallen-weg')===td()){bar.style.display='none';return;}
+  const oudste=Math.max(...laat.map(f=>dagenTeLaat(f)));
+  const bedrag=laat.reduce((s,f)=>s+(f.totaal||0),0);
+  document.getElementById('vervallen-banner-msg').textContent=
+    laat.length+(laat.length===1?' factuur staat ':' facturen staan ')+'te laat — '+eur(bedrag)+
+    ', de oudste '+oudste+' dagen';
+  bar.style.display='flex';
+}
+function dismissVervallen(){
+  try{localStorage.setItem('vervallen-weg',td());}catch(e){}
+  document.getElementById('vervallen-banner').style.display='none';
+}
+// Opent per vervallen factuur een voorbereide herinneringsmail. Versturen doe
+// je zelf in je mailprogramma.
+function herinneringenKlaarzetten(){
+  const laat=db.facturen.filter(f=>dagenTeLaat(f)!==null)
+    .sort((a,b)=>dagenTeLaat(b)-dagenTeLaat(a));
+  if(!laat.length){alert('Er staat niets te laat.');return;}
+  const zonder=laat.filter(f=>!facEmail(gc(f.klantId)));
+  let tekst=laat.length+' herinnering'+(laat.length===1?'':'en')+' openen in je mailprogramma?';
+  if(zonder.length)tekst+='\n\nVan '+zonder.length+' factu'+(zonder.length===1?'ur':'ren')+
+    ' kent de app geen e-mailadres; die opent leeg:\n'+zonder.map(f=>f.nummer+' — '+f.klant).join('\n');
+  if(!confirm(tekst))return;
+  // Met tussenpozen, anders blokkeert de browser de vensters.
+  laat.forEach((f,i)=>setTimeout(()=>herinneringMail(f.id),i*700));
+  dismissVervallen();
+}
+
 // ===== SUPABASE DATA HELPERS =====
 function sbEntryToLocal(r){
   return{id:r.id,clientId:r.client_id,project:r.project||'',datum:r.datum,
@@ -2473,7 +2514,7 @@ async function startup(){
   document.getElementById('u-activiteit').addEventListener('change',uActChange);
   document.getElementById('u-facturabel').addEventListener('change',uCalc);
   await initFromSupabase();
-  fillSels();renderU();loadSett();renderDash();checkBackupBanner();
+  fillSels();renderU();loadSett();renderDash();checkBackupBanner();checkVervallenBanner();
 }
 startup();
 </script>

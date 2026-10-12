@@ -573,17 +573,28 @@ async function saveSettings(){
 async function saveFactuur(f){
   const row={
     id:f.id, nummer:f.nummer||null, po:f.po||null,
-    klant:f.klant||null, klant_id:f.klant_id||null,
+    klant:f.klant||null, klant_id:f.klantId||null,
     datum:f.datum||null, vervaldag:f.vervaldag||null,
     kenmerk:f.kenmerk||null, totaal:f.totaal||0,
-    subtotaal:f.subtotaal||0, btw_bedrag:f.btw_bedrag||0,
-    btw_pct:f.btw_pct||0, extra:f.extra||null,
+    subtotaal:f.subtotaal||0, btw_bedrag:f.btwBedrag||0,
+    btw_pct:f.btwPct||0, extra:f.extra||null,
+    regels:f.regels||null, bijlagen:f.bijlagen||null,
     periode:f.periode||null,
-    verzonden:f.verzonden||false, verzonden_op:f.verzonden_op||null,
-    betaald:f.betaald||false, betaald_op:f.betaald_op||null,
-    creditnota:f.creditnota||false, orig_fac_nr:f.orig_fac_nr||null
+    verzonden:f.verzonden||false, verzonden_op:f.verzondenOp||null,
+    betaald:f.betaald||false, betaald_op:f.betaaldOp||null,
+    creditnota:f.creditnota||false, orig_fac_nr:f.origFacNr||null
   };
-  await sbUpsert('facturen',[row]);
+  try{
+    await sbUpsert('facturen',[row]);
+  }catch(e){
+    // Bestaan de kolommen regels/bijlagen nog niet, dan valt de save terug
+    // op de oude kolommen in plaats van helemaal te mislukken.
+    if(!/PGRST204|schema cache|column/i.test(String(e&&e.message||e)))throw e;
+    const basis=Object.assign({},row);
+    delete basis.regels; delete basis.bijlagen;
+    await sbUpsert('facturen',[basis]);
+    console.warn('De facturen-tabel mist de kolommen regels of bijlagen. Die zijn niet bewaard — voeg de kolommen toe in Supabase.');
+  }
 }
 function gc(id){return db.clients.find(c=>c.id===id);}
 function clientProjects(c){if(!c||!c.project)return[];return c.project.split(',').map(p=>p.trim()).filter(Boolean);}
@@ -1300,7 +1311,7 @@ function downloadFactuurPDF(){const fd=getFacData();if(!fd.c){alert('Kies eerst 
 async function opslaanFac(){
   const fd=getFacData();if(!fd.c){alert('Kies eerst een klant.');return;}
   const periodeLabel=document.getElementById('f-periode').value||(fd.van&&fd.tot?fd.van.slice(0,7):'');
-  const newFac={id:db.nextId++,nummer:fd.nummer,po:fd.po,klant:fd.c.naam,klant_id:fd.cid,datum:fd.datum,vervaldag:fd.vervaldag,kenmerk:fd.kenmerk,totaal:fd.totaal,subtotaal:fd.subtotaal,btw_bedrag:fd.btwBedrag,btw_pct:fd.btwPct,extra:[...facExtra],periode:periodeLabel};
+  const newFac={id:db.nextId++,nummer:fd.nummer,po:fd.po,klant:fd.c.naam,klantId:fd.cid,datum:fd.datum,vervaldag:fd.vervaldag,kenmerk:fd.kenmerk,totaal:fd.totaal,subtotaal:fd.subtotaal,btwBedrag:fd.btwBedrag,btwPct:fd.btwPct,extra:[...facExtra],regels:fd.allRegels.map(r=>({...r})),periode:periodeLabel};
   db.facturen.unshift(newFac);
   db.settings.facnr=nextFacNr();
   document.getElementById('f-nummer').value=db.settings.facnr;
@@ -1376,15 +1387,28 @@ function renderFL(){
     </tr>`;
   }).join('');
 }
+// Regels van een opgeslagen factuur. Facturen die mét regels zijn bewaard
+// geven exact terug wat er destijds op stond. Oudere facturen worden
+// heropgebouwd uit de uren van die klant, en dan enkel gefilterd op periode
+// als die een datumprefix is (2026-05) en geen vrije tekst ("mei 2026").
+function facRegels(f,metDetail){
+  if(Array.isArray(f.regels)&&f.regels.length)return f.regels.map(r=>Object.assign({},r));
+  const extraRegels=(f.extra||[]).map(r=>({type:r.type,datum:r.datum,omschrijving:r.omschrijving,activiteit:'',project:'',aantal:1,prijs:r.bedrag,bedrag:r.bedrag}));
+  // Zonder bewaarde regels kunnen de uurregels enkel betrouwbaar worden
+  // heropgebouwd als de periode een datumprefix is (2026-05). Bij een vrije
+  // tekst ("mei 2026") of een creditnota blijft het bij de vrije regels: alle
+  // uren van die klant meenemen zou een verkeerde factuur opleveren.
+  if(f.creditnota||!f.periode||!/^\d{4}-\d{2}/.test(f.periode))return extraRegels;
+  const urenRegels=db.entries.filter(e=>e.clientId===f.klantId&&e.facturabel!==false&&e.datum.startsWith(f.periode));
+  return[
+    ...urenRegels.map(e=>({type:'uren',datum:e.datum,omschrijving:e.omschrijving||'',activiteit:metDetail?(e.activiteit||''):'',project:metDetail?(e.project||''):'',aantal:e.uren,prijs:e.tarief,bedrag:e.uren*e.tarief})),
+    ...extraRegels
+  ];
+}
 function herdownload(id){
   const f=db.facturen.find(x=>x.id===id);if(!f)return;
   const c=gc(f.klantId)||{naam:f.klant,nr:'',adres:'',plaats:'',btw:''};
-  let urenRegels=db.entries.filter(e=>e.clientId===f.klantId&&e.facturabel!==false);
-  if(f.periode)urenRegels=urenRegels.filter(e=>e.datum.startsWith(f.periode));
-  const allRegels=[
-    ...urenRegels.map(e=>({type:'uren',datum:e.datum,omschrijving:e.omschrijving||'',aantal:e.uren,prijs:e.tarief,bedrag:e.uren*e.tarief})),
-    ...(f.extra||[]).map(r=>({type:r.type,datum:r.datum,omschrijving:r.omschrijving,aantal:1,prijs:r.bedrag,bedrag:r.bedrag}))
-  ];
+  const allRegels=facRegels(f,false);
   buildFactuurPDF({c,btwPct:f.btwPct||21,nummer:f.nummer,po:f.po||'',datum:f.datum,vervaldag:f.vervaldag||'',kenmerk:f.kenmerk||'',allRegels,subtotaal:f.subtotaal,btwBedrag:f.btwBedrag,totaal:f.totaal,settings:db.settings});
 }
 async function delFac(id){if(confirm('Factuur verwijderen?')){db.facturen=db.facturen.filter(f=>f.id!==id);renderFL();try{await sbDelete('facturen','id=eq.'+id);}catch(e){console.error('SB delete factuur:',e);}}}
@@ -1410,7 +1434,10 @@ function addKlant(){
     }
     cancelEditKlant();fillSels();renderK();return;
   }
-  const nr=document.getElementById('k-nr').value.trim()||String(db.clients.length+1).padStart(3,'0');
+  // Tel door vanaf het hoogste bestaande klantnummer, zodat een verwijderd
+  // nummer nooit opnieuw wordt uitgedeeld.
+  const hoogste=db.clients.reduce((m,c)=>{const n=parseInt(c.nr,10);return isNaN(n)?m:Math.max(m,n);},0);
+  const nr=document.getElementById('k-nr').value.trim()||String(hoogste+1).padStart(3,'0');
   const newClient={id:db.nextId++,nr,naam,adres:document.getElementById('k-adres').value.trim(),plaats:document.getElementById('k-plaats').value.trim(),land:document.getElementById('k-land').value.trim(),btw:document.getElementById('k-btw').value.trim(),email:document.getElementById('k-email').value.trim(),tel:document.getElementById('k-tel').value.trim(),project:document.getElementById('k-project').value.trim()||naam,tarief,color:COLORS[db.clients.length%COLORS.length],archived:false};
   db.clients.push(newClient);
   saveClient(newClient).then(()=>saveSettings()).catch(e=>console.error('SB save client:',e));
@@ -1668,14 +1695,15 @@ function sbSettingsToLocal(r){
 }
 function sbFactuurToLocal(r){
   return{id:r.id,nummer:r.nummer||'',po:r.po||'',
-    klant:r.klant||'',klant_id:r.klant_id,
+    klant:r.klant||'',klantId:r.klant_id,
     datum:r.datum,vervaldag:r.vervaldag,kenmerk:r.kenmerk||'',
     totaal:parseFloat(r.totaal)||0,subtotaal:parseFloat(r.subtotaal)||0,
-    btw_bedrag:parseFloat(r.btw_bedrag)||0,btw_pct:parseFloat(r.btw_pct)||0,
-    extra:r.extra,periode:r.periode||'',
-    verzonden:r.verzonden||false,verzonden_op:r.verzonden_op,
-    betaald:r.betaald||false,betaald_op:r.betaald_op,
-    creditnota:r.creditnota||false,orig_fac_nr:r.orig_fac_nr||''};
+    btwBedrag:parseFloat(r.btw_bedrag)||0,btwPct:parseFloat(r.btw_pct)||0,
+    extra:r.extra,regels:r.regels||null,bijlagen:r.bijlagen||[],
+    periode:r.periode||'',
+    verzonden:r.verzonden||false,verzondenOp:r.verzonden_op,
+    betaald:r.betaald||false,betaaldOp:r.betaald_op,
+    creditnota:r.creditnota||false,origFacNr:r.orig_fac_nr||''};
 }
 
 // ===== MIGRATE HISTORY TO SUPABASE =====
@@ -1875,12 +1903,7 @@ async function fdpMailGraph(){
 
 function herdownloadDoc(f,externalDoc){
   const c=gc(f.klantId)||{naam:f.klant,nr:'',adres:'',plaats:'',btw:''};
-  let urenRegels=db.entries.filter(e=>e.clientId===f.klantId&&e.facturabel!==false);
-  if(f.periode)urenRegels=urenRegels.filter(e=>e.datum.startsWith(f.periode));
-  const allRegels=[
-    ...urenRegels.map(e=>({type:'uren',datum:e.datum,omschrijving:e.omschrijving||'',activiteit:e.activiteit||'',project:e.project||'',aantal:e.uren,prijs:e.tarief,bedrag:e.uren*e.tarief})),
-    ...(f.extra||[]).map(r=>({type:r.type,datum:r.datum,omschrijving:r.omschrijving,activiteit:'',project:'',aantal:1,prijs:r.bedrag,bedrag:r.bedrag}))
-  ];
+  const allRegels=facRegels(f,true);
   buildFactuurPDF({c,btwPct:f.btwPct||21,nummer:f.nummer,po:f.po||'',datum:f.datum,vervaldag:f.vervaldag||'',kenmerk:f.kenmerk||'',allRegels,subtotaal:f.subtotaal,btwBedrag:f.btwBedrag,totaal:f.totaal,periode:f.periode||'',settings:db.settings},externalDoc,!!externalDoc);
 }
 

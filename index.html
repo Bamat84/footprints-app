@@ -691,24 +691,28 @@ function exportCSV(){
 // PDF HEADER
 function pdfHeader(doc,s){
   const W=210,ml=20,mr=20;
-  const cy=18,lw=55;
-  doc.setDrawColor(180);doc.setLineWidth(0.4);
-  doc.line(ml,cy,ml+lw,cy);
-  doc.setFillColor(220,220,220);doc.circle(ml+lw+6,cy,6,'F');
-  doc.setFontSize(7);doc.setTextColor(100);doc.setFont(undefined,'bold');
-  doc.text('Lex/IT',ml+lw+6,cy+0.8,{align:'center'});
-  doc.line(ml+lw+12,cy,W-mr,cy);
+  // Logo: horizontale lijnen met cirkel in het midden
+  const cy=18,lw=60;
+  const cx=W/2;
+  doc.setDrawColor(160);doc.setLineWidth(0.3);
+  doc.line(ml,cy,cx-8,cy);
+  doc.setFillColor(235,235,235);doc.circle(cx,cy,7,'F');
+  doc.setDrawColor(160);doc.setLineWidth(0.3);doc.circle(cx,cy,7,'S');
+  doc.setFontSize(6.5);doc.setTextColor(80);doc.setFont(undefined,'bold');
+  doc.text('Lex/',cx,cy-0.5,{align:'center'});
+  doc.setFont(undefined,'normal');
+  doc.text('IT',cx,cy+3,{align:'center'});
+  doc.setDrawColor(160);doc.setLineWidth(0.3);
+  doc.line(cx+8,cy,W-mr,cy);
+  // Afzender rechtsboven: naam, adres, stad, BTW (geen tel/email)
   const lines=[];
-  if(s.naam)lines.push({t:s.naam,bold:true,sz:10});
+  if(s.naam)lines.push({t:s.naam,bold:false,sz:9});
   if(s.adres)lines.push({t:s.adres,bold:false,sz:9});
   if(s.plaats)lines.push({t:s.plaats,bold:false,sz:9});
-  if(s.land)lines.push({t:s.land,bold:false,sz:9});
-  if(s.tel||s.email){lines.push({t:'',bold:false,sz:4});}
-  if(s.tel)lines.push({t:'T: '+s.tel,bold:false,sz:9});
-  if(s.email)lines.push({t:'E: '+s.email,bold:false,sz:9});
-  let ay=12;
-  lines.forEach(l=>{if(l.t===''){ay+=l.sz;return;}doc.setFontSize(l.sz);doc.setFont(undefined,l.bold?'bold':'normal');doc.setTextColor(l.bold?30:60);doc.text(l.t,W-mr,ay,{align:'right'});ay+=l.sz*0.5+1.2;});
-  return Math.max(ay+4,42);
+  if(s.btw)lines.push({t:s.btw,bold:false,sz:9});
+  let ay=10;
+  lines.forEach(l=>{doc.setFontSize(l.sz);doc.setFont(undefined,l.bold?'bold':'normal');doc.setTextColor(50);doc.text(l.t,W-mr,ay,{align:'right'});ay+=5;});
+  return Math.max(ay+6,38);
 }
 
 // URENSPECIFICATIE PDF
@@ -906,46 +910,101 @@ function buildFactuurPDF(d){
   const{jsPDF}=window.jspdf;
   const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
   const s=d.settings;const W=210,ml=20,mr=20;
-  let y=pdfHeader(doc,s);y+=8;
+  let y=pdfHeader(doc,s);
   const cl=d.c;
-  const klines=[cl.naam,cl.adres,cl.plaats,cl.btw?'BTW: '+cl.btw:null].filter(Boolean);
-  klines.forEach((l,i)=>{doc.setFontSize(i===0?10:9);doc.setFont(undefined,i===0?'bold':'normal');doc.setTextColor(i===0?30:65);doc.text(l,ml,y+i*5);});
+  // Klantgegevens linksboven
+  const klines=[cl.naam,cl.adres,cl.plaats,cl.land||'België',cl.btw?'BTW: '+cl.btw:null].filter(Boolean);
+  klines.forEach((l,i)=>{
+    doc.setFontSize(9);doc.setFont(undefined,'normal');doc.setTextColor(50);
+    doc.text(l,ml,y+i*5);
+  });
   y+=klines.length*5+10;
-  doc.setFontSize(20);doc.setFont(undefined,'bold');doc.setTextColor(20);doc.text('FACTUUR',ml,y);y+=10;
-  const meta=[
-    ['Factuurnummer:',d.nummer,'Factuurdatum:',d.datum?fmtDateSlash(d.datum):''],
-    ['Klantnummer:',cl.nr||'—','Leveringsdatum:',d.datum?fmtDateSlash(d.datum):''],
-    [cl.btw?'Uw btw-id:':'','',cl.btw?cl.btw:'','Vervaldatum:',d.vervaldag?fmtDateSlash(d.vervaldag):''],
-    [d.po?'PO nummer:':'','',d.po||'','',''],
-  ].filter(r=>r[0]||r[3]);
+  // FACTUUR titel
+  doc.setFontSize(22);doc.setFont(undefined,'normal');doc.setTextColor(30);
+  doc.text('FACTUUR',ml,y);y+=10;
+  // Meta: links kolom (label + waarde) en rechts kolom (label + waarde)
   doc.setFontSize(9);
-  meta.forEach(r=>{
-    if(r[0]){doc.setFont(undefined,'normal');doc.setTextColor(90);doc.text(r[0],ml,y);doc.setFont(undefined,'bold');doc.setTextColor(30);doc.text(r[1],ml+34,y);}
-    if(r[3]){doc.setFont(undefined,'normal');doc.setTextColor(90);doc.text(r[3],W/2,y);doc.setFont(undefined,'bold');doc.setTextColor(30);doc.text(r[4]||'',W/2+30,y);}
+  const metaLinks=[
+    ['Factuurnummer:',d.nummer||''],
+    ['Klantnummer:',cl.nr||''],
+    cl.btw?['Uw btw-id:',cl.btw]:null,
+    d.po?['PO nummer:',d.po]:null,
+    d.kenmerk?['Kenmerk:',d.kenmerk]:null,
+  ].filter(Boolean);
+  const metaRechts=[
+    ['Factuurdatum:',d.datum?fmtDateSlash(d.datum):''],
+    ['Vervaldatum:',d.vervaldag?fmtDateSlash(d.vervaldag):''],
+  ];
+  const metaMax=Math.max(metaLinks.length,metaRechts.length);
+  for(let i=0;i<metaMax;i++){
+    if(metaLinks[i]){
+      doc.setFont(undefined,'normal');doc.setTextColor(90);doc.text(metaLinks[i][0],ml,y);
+      doc.setFont(undefined,'normal');doc.setTextColor(30);doc.text(metaLinks[i][1],ml+34,y);
+    }
+    if(metaRechts[i]){
+      doc.setFont(undefined,'normal');doc.setTextColor(90);doc.text(metaRechts[i][0],W/2+5,y);
+      doc.setFont(undefined,'bold');doc.setTextColor(30);doc.text(metaRechts[i][1],W-mr,y,{align:'right'});
+    }
     y+=5;
-  });y+=4;
+  }
+  y+=6;
+  // Factuurtabel
   const head=[['Omschrijving','Aantal','Prijs','Totaal','Btw']];
-  const body=d.allRegels.map(r=>[r.omschrijving,r.type==='uren'?fmt(r.aantal):'1',r.type==='uren'?'€ '+r.prijs.toFixed(2):'','€ '+r.bedrag.toFixed(2),d.btwPct+'%']);
+  const body=d.allRegels.map(r=>[
+    r.omschrijving,
+    r.type==='uren'?fmt(r.aantal):'1',
+    r.type==='uren'?r.prijs.toFixed(2):'',
+    r.bedrag.toFixed(2),
+    d.btwPct+'%'
+  ]);
   doc.autoTable({
     startY:y,head,body,
-    headStyles:{fillColor:null,textColor:40,fontStyle:'bold',fontSize:9,lineWidth:{bottom:0.5},lineColor:40},
+    headStyles:{fillColor:null,textColor:40,fontStyle:'bold',fontSize:9},
     bodyStyles:{fontSize:9,textColor:45},
-    columnStyles:{0:{cellWidth:W-ml-mr-22-26-22-16},1:{cellWidth:22,halign:'right'},2:{cellWidth:26,halign:'right'},3:{cellWidth:22,halign:'right'},4:{cellWidth:16,halign:'right'}},
+    columnStyles:{
+      0:{cellWidth:W-ml-mr-20-24-20-14},
+      1:{cellWidth:20,halign:'right'},
+      2:{cellWidth:24,halign:'right'},
+      3:{cellWidth:20,halign:'right'},
+      4:{cellWidth:14,halign:'right'}
+    },
     margin:{left:ml,right:mr},
     didParseCell:function(data){
-      if(data.section==='head'){data.cell.styles.fillColor=false;data.cell.styles.lineWidth={bottom:0.5,top:0,left:0,right:0};data.cell.styles.lineColor=40;}
-      else{data.cell.styles.lineWidth={bottom:0.3,top:0,left:0,right:0};data.cell.styles.lineColor=210;}
+      if(data.section==='head'){
+        data.cell.styles.fillColor=false;
+        data.cell.styles.lineWidth={bottom:0.5,top:0,left:0,right:0};
+        data.cell.styles.lineColor=40;
+      }else{
+        data.cell.styles.lineWidth={bottom:0.3,top:0,left:0,right:0};
+        data.cell.styles.lineColor=210;
+      }
     }
   });
-  y=doc.lastAutoTable.finalY+6;
-  const tw=70,tx=W-mr-tw;
-  const trows=[['Totaal excl. btw','€ '+d.subtotaal.toFixed(2),false],['Btw ('+d.btwPct+'%)','€ '+d.btwBedrag.toFixed(2),false],['Totaal EUR','€ '+d.totaal.toFixed(2),true]];
+  y=doc.lastAutoTable.finalY+8;
+  // Totaalblok (rechts uitgelijnd, stijl als referentie)
+  const lx=W-mr-55,vx=W-mr;
+  const trows=[
+    ['Totaal excl. btw',d.subtotaal.toFixed(2),false],
+    ['Btw ('+d.btwPct+'%)',d.btwBedrag.toFixed(2),false],
+    ['Totaal EUR',d.totaal.toFixed(2),true],
+  ];
   trows.forEach(r=>{
-    if(r[2]){doc.setDrawColor(40);doc.setLineWidth(0.4);doc.line(tx,y-1,W-mr,y-1);doc.setFontSize(10);doc.setFont(undefined,'bold');doc.setTextColor(20);}
-    else{doc.setFontSize(9);doc.setFont(undefined,'normal');doc.setTextColor(70);}
-    doc.text(r[0],tx,y);doc.text(r[1],W-mr,y,{align:'right'});y+=r[2]?7:5;
+    if(r[2]){
+      // Dunne lijn boven de totaalregel
+      doc.setDrawColor(40);doc.setLineWidth(0.3);doc.line(lx,y-2,vx,y-2);
+      doc.setFontSize(10);doc.setFont(undefined,'normal');doc.setTextColor(20);
+    }else{
+      doc.setFontSize(9);doc.setFont(undefined,'normal');doc.setTextColor(60);
+    }
+    doc.text(r[0],lx,y);
+    doc.text(r[1],vx,y,{align:'right'});
+    y+=r[2]?7:5;
   });
-  if(s.iban){y+=6;doc.setFontSize(8.5);doc.setFont(undefined,'normal');doc.setTextColor(80);doc.text('Gelieve te betalen op rekeningnummer '+s.iban+' met referte '+d.nummer+'.',ml,y,{maxWidth:W-ml-mr});}
+  // Betalingslijn onderaan
+  if(s.iban){
+    y+=10;doc.setFontSize(8.5);doc.setFont(undefined,'normal');doc.setTextColor(70);
+    doc.text('Gelieve te betalen op rekeningnummer '+s.iban+' met referte '+d.nummer+'.',ml,y,{maxWidth:W-ml-mr});
+  }
   doc.save(d.nummer+'.pdf');
 }
 function downloadFactuurPDF(){const fd=getFacData();if(!fd.c){alert('Kies eerst een klant.');return;}buildFactuurPDF({...fd,settings:db.settings});}

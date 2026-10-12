@@ -317,16 +317,41 @@ input[type=checkbox]{width:auto;accent-color:var(--purple);}
     </div>
   </div>
   <div class="tab-pane" id="fac-lijst">
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:1rem;">
-      <span style="font-size:13px;color:var(--text2);">Toon:</span>
-      <select id="fl-filter" onchange="renderFL()" style="width:auto;">
-        <option value="">Alle facturen</option>
-        <option value="open">Openstaand</option>
-        <option value="vervallen">Vervallen</option>
-        <option value="betaald">Betaald</option>
-        <option value="creditnota">Creditnota's</option>
-      </select>
-      <span id="fl-telling" style="font-size:12px;color:var(--text3);"></span>
+    <div class="card" style="margin-bottom:1rem;">
+      <div style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;">
+        <div style="min-width:150px;"><label>Status</label>
+          <select id="fl-filter" onchange="renderFL()">
+            <option value="">Alle statussen</option>
+            <option value="open">Openstaand</option>
+            <option value="vervallen">Vervallen</option>
+            <option value="betaald">Betaald</option>
+            <option value="creditnota">Creditnota's</option>
+          </select>
+        </div>
+        <div style="min-width:170px;"><label>Klant</label>
+          <select id="fl-klant" onchange="renderFL()"><option value="">Alle klanten</option></select>
+        </div>
+        <div style="min-width:160px;"><label>Periode</label>
+          <select id="fl-periode" onchange="flPeriodeChange()">
+            <option value="">Alle periodes</option>
+            <option value="maand">Deze maand</option>
+            <option value="vmaand">Vorige maand</option>
+            <option value="kwartaal">Dit kwartaal</option>
+            <option value="jaar">Dit jaar</option>
+            <option value="vjaar">Vorig jaar</option>
+            <option value="custom">Zelf kiezen…</option>
+          </select>
+        </div>
+        <div id="fl-datums" style="display:none;gap:10px;align-items:flex-end;">
+          <div><label>Van</label><input type="date" id="fl-van" onchange="renderFL()"></div>
+          <div><label>Tot</label><input type="date" id="fl-tot" onchange="renderFL()"></div>
+        </div>
+        <div style="flex:1;min-width:170px;"><label>Zoeken</label>
+          <input type="text" id="fl-zoek" placeholder="Nummer, klant, PO of kenmerk" oninput="renderFL()">
+        </div>
+        <button class="btn btn-sm" onclick="flWis()" style="margin-bottom:1px;">Wis filters</button>
+      </div>
+      <div id="fl-telling" style="font-size:12px;color:var(--text2);margin-top:0.75rem;"></div>
     </div>
     <div class="card" style="padding:0;overflow:hidden;">
       <table><thead><tr><th>Nummer</th><th>Klant</th><th>PO nummer</th><th>Datum</th><th style="text-align:right">Totaal</th><th>Status</th><th></th></tr></thead>
@@ -369,13 +394,11 @@ input[type=checkbox]{width:auto;accent-color:var(--purple);}
     <div style="margin-bottom:1.25rem;">
       <h2 style="margin-bottom:0.75rem;">Bijlagen</h2>
       <div id="fdp-bijlagen-lijst" style="margin-bottom:0.75rem;"></div>
-      <div style="display:flex;gap:8px;align-items:center;">
-        <label class="btn btn-sm" style="cursor:pointer;margin:0;">
-          + Bijlage toevoegen
-          <input type="file" id="fdp-bijlage-input" multiple accept=".pdf,image/*" style="display:none;" onchange="fdpAddBijlage(this)">
-        </label>
-        <span style="font-size:11px;color:var(--text3);">PDF of afbeelding (bon, contract, …)</span>
-      </div>
+      <label id="fdp-dropzone" style="display:block;cursor:pointer;margin:0;padding:1rem;text-align:center;border:1.5px dashed var(--border2);border-radius:var(--rl);background:var(--bg2);transition:all .12s;">
+        <div style="font-size:13px;font-weight:500;">Sleep hier een bestand, of klik om te kiezen</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:3px;">PDF of afbeelding (bon, contract, timesheet …)</div>
+        <input type="file" id="fdp-bijlage-input" multiple accept=".pdf,image/*" style="display:none;" onchange="fdpAddBijlage(this)">
+      </label>
     </div>
 
     <div>
@@ -667,7 +690,7 @@ function facTab(n){
   document.querySelectorAll('#page-factuur>.tabs .tab-btn').forEach((b,i)=>b.classList.toggle('active',['nieuw','lijst'][i]===n));
   document.getElementById('fac-nieuw').classList.toggle('active',n==='nieuw');
   document.getElementById('fac-lijst').classList.toggle('active',n==='lijst');
-  if(n==='lijst')renderFL();
+  if(n==='lijst'){fillSels();renderFL();}
 }
 function regelTab(n){
   document.querySelectorAll('#fac-nieuw .card:nth-child(2) .tab-btn').forEach((b,i)=>b.classList.toggle('active',['vrij','onkost'][i]===n));
@@ -682,6 +705,17 @@ function fillSels(){
     db.clients.filter(c=>!c.archived).forEach(c=>{const o=document.createElement('option');o.value=c.id;o.textContent=c.naam+(c.nr?' ('+c.nr+')':'');s.appendChild(o);});
     s.value=v;
   });
+  // Klantfilter op de facturenlijst: ook gearchiveerde klanten, want die
+  // hebben vaak nog oude facturen staan.
+  const fk=document.getElementById('fl-klant');
+  if(fk){
+    const v=fk.value;
+    fk.innerHTML='<option value="">Alle klanten</option>';
+    const ids=new Set(db.facturen.map(f=>f.klantId).filter(x=>x!=null));
+    db.clients.filter(c=>ids.has(c.id)||!c.archived).forEach(c=>{
+      const o=document.createElement('option');o.value=c.id;o.textContent=c.naam+(c.archived?' (gearchiveerd)':'');fk.appendChild(o);});
+    fk.value=v;
+  }
   // Fill project filter
   const fp=document.getElementById('ov-fp');
   if(fp){
@@ -1531,12 +1565,48 @@ function renderMaanden(jaar){
     </div>`;
   }).join('');
 }
+// De periodekeuze vult van/tot in; "Zelf kiezen" toont de twee datumvelden.
+function flPeriodeChange(){
+  const p=document.getElementById('fl-periode').value;
+  const wrap=document.getElementById('fl-datums');
+  wrap.style.display=p==='custom'?'flex':'none';
+  if(p!=='custom'){
+    const n=new Date(), j=n.getFullYear(), m=n.getMonth();
+    const iso=(y,mo,d)=>y+'-'+String(mo+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+    const laatste=(y,mo)=>new Date(y,mo+1,0).getDate();
+    let van='',tot='';
+    if(p==='maand'){van=iso(j,m,1);tot=iso(j,m,laatste(j,m));}
+    else if(p==='vmaand'){const d=new Date(j,m-1,1);van=iso(d.getFullYear(),d.getMonth(),1);tot=iso(d.getFullYear(),d.getMonth(),laatste(d.getFullYear(),d.getMonth()));}
+    else if(p==='kwartaal'){const q=Math.floor(m/3)*3;van=iso(j,q,1);tot=iso(j,q+2,laatste(j,q+2));}
+    else if(p==='jaar'){van=j+'-01-01';tot=j+'-12-31';}
+    else if(p==='vjaar'){van=(j-1)+'-01-01';tot=(j-1)+'-12-31';}
+    document.getElementById('fl-van').value=van;
+    document.getElementById('fl-tot').value=tot;
+  }
+  renderFL();
+}
+function flWis(){
+  ['fl-filter','fl-klant','fl-periode','fl-van','fl-tot','fl-zoek'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  document.getElementById('fl-datums').style.display='none';
+  renderFL();
+}
 function renderFL(){
   const tbody=document.getElementById('fl-tbody');
-  const filter=document.getElementById('fl-filter')?.value||'';
-  const lijst=filter?db.facturen.filter(f=>facStatus(f)===filter||(filter==='open'&&facStatus(f)==='verzonden')):db.facturen;
+  const val=id=>document.getElementById(id)?.value||'';
+  const filter=val('fl-filter'), kid=val('fl-klant'), van=val('fl-van'), tot=val('fl-tot');
+  const zoek=val('fl-zoek').toLowerCase().trim();
+  let lijst=db.facturen;
+  if(filter)lijst=lijst.filter(f=>facStatus(f)===filter||(filter==='open'&&facStatus(f)==='verzonden'));
+  if(kid)lijst=lijst.filter(f=>String(f.klantId)===kid);
+  if(van)lijst=lijst.filter(f=>f.datum&&f.datum>=van);
+  if(tot)lijst=lijst.filter(f=>f.datum&&f.datum<=tot);
+  if(zoek)lijst=lijst.filter(f=>[f.nummer,f.klant,f.po,f.kenmerk].filter(Boolean).join(' ').toLowerCase().includes(zoek));
   const tel=document.getElementById('fl-telling');
-  if(tel)tel.textContent=lijst.length+' van '+db.facturen.length+' — '+eur(lijst.reduce((s,f)=>s+(f.totaal||0),0));
+  if(tel){
+    const tot_=lijst.reduce((s,f)=>s+(f.totaal||0),0);
+    const ex=lijst.reduce((s,f)=>s+(f.subtotaal||0),0);
+    tel.textContent=lijst.length+' van '+db.facturen.length+' facturen — '+eur(ex)+' excl. btw, '+eur(tot_)+' incl. btw';
+  }
   if(!lijst.length){tbody.innerHTML='<tr><td colspan="7" class="empty">Geen facturen in deze selectie</td></tr>';return;}
   tbody.innerHTML=lijst.map(f=>{
     const st=facStatus(f);
@@ -2094,10 +2164,15 @@ function herdownloadDoc(f,externalDoc){
 }
 
 async function fdpAddBijlage(input){
-  if(!_fdpId)return;
+  await fdpVoegBestandenToe(input.files);
+  input.value='';
+}
+// Bestanden koppelen aan de open factuur, zowel via de knop als via slepen.
+async function fdpVoegBestandenToe(files){
+  if(!_fdpId||!files||!files.length)return;
   const f=db.facturen.find(x=>x.id===_fdpId);if(!f)return;
   if(!f.bijlagen)f.bijlagen=[];
-  for(const file of input.files){
+  for(const file of files){
     const isPdf=file.type==='application/pdf';
     const isImg=file.type.startsWith('image/');
     if(!isPdf&&!isImg){alert(file.name+' is geen PDF of afbeelding.');continue;}
@@ -2109,9 +2184,25 @@ async function fdpAddBijlage(input){
     });
     f.bijlagen.push({naam:file.name,type:isPdf?'pdf':'img',mime:file.type,data});
   }
-  input.value='';
   fdpRenderBijlagen(f);
   try{await saveFactuur(f);}catch(e){console.error('SB save bijlage:',e);}
+}
+// Slepen en loslaten op de bijlagezone van het factuurpaneel.
+function initDropzone(){
+  const dz=document.getElementById('fdp-dropzone');
+  if(!dz)return;
+  const aan=()=>{dz.style.borderColor='var(--purple)';dz.style.background='var(--purple-l)';};
+  const uit=()=>{dz.style.borderColor='var(--border2)';dz.style.background='var(--bg2)';};
+  ['dragenter','dragover'].forEach(ev=>dz.addEventListener(ev,e=>{e.preventDefault();e.stopPropagation();aan();}));
+  ['dragleave','drop'].forEach(ev=>dz.addEventListener(ev,e=>{e.preventDefault();e.stopPropagation();uit();}));
+  dz.addEventListener('drop',e=>{
+    const files=e.dataTransfer&&e.dataTransfer.files;
+    if(files&&files.length)fdpVoegBestandenToe(files);
+  });
+  // Buiten de zone loslaten mag het bestand niet in de browser openen.
+  ['dragover','drop'].forEach(ev=>window.addEventListener(ev,e=>{
+    if(!dz.contains(e.target))e.preventDefault();
+  }));
 }
 
 function fdpDownloadBijlage(idx){
@@ -2322,6 +2413,7 @@ async function mailFactuur(){
 // ===== STARTUP =====
 async function startup(){
   document.getElementById('u-datum').value=td();
+  initDropzone();
   document.getElementById('u-activiteit').addEventListener('change',uActChange);
   document.getElementById('u-facturabel').addEventListener('change',uCalc);
   await initFromSupabase();

@@ -1451,7 +1451,9 @@ function renderDash(){
   const open=facturen.filter(f=>['open','verzonden'].includes(facStatus(f)));
   const vervallen=facturen.filter(f=>facStatus(f)==='vervallen');
   const thisYear=new Date().getFullYear().toString();
-  const betaaldJaar=facturen.filter(f=>f.betaald&&f.betaaldOp&&f.betaaldOp.startsWith(thisYear));
+  // Facturen van voor de fix hebben geen betaaldatum bewaard; dan telt de
+  // factuurdatum, anders zou dit cijfer op nul blijven staan.
+  const betaaldJaar=facturen.filter(f=>f.betaald&&((f.betaaldOp||f.datum||'').startsWith(thisYear)));
 
   // Niet gefactureerde, facturabele uren per klant.
   const onfact=db.entries.filter(e=>e.facturabel!==false&&!e.gefactureerd);

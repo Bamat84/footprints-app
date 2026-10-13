@@ -785,6 +785,7 @@ async function saveFactuur(f){
     subtotaal:f.subtotaal||0, btw_bedrag:f.btwBedrag||0,
     btw_pct:f.btwPct||0, extra:f.extra||null,
     regels:f.regels||null, bijlagen:f.bijlagen||null, ur_omschr:f.urOmschr||null,
+    uren_ids:f.urenIds||null,
     periode:f.periode||null,
     verzonden:f.verzonden||false, verzonden_op:f.verzondenOp||null,
     betaald:f.betaald||false, betaald_op:f.betaaldOp||null,
@@ -797,9 +798,9 @@ async function saveFactuur(f){
     // op de oude kolommen in plaats van helemaal te mislukken.
     if(!/PGRST204|schema cache|column/i.test(String(e&&e.message||e)))throw e;
     const basis=Object.assign({},row);
-    delete basis.regels; delete basis.bijlagen; delete basis.ur_omschr;
+    delete basis.regels; delete basis.bijlagen; delete basis.ur_omschr; delete basis.uren_ids;
     await sbUpsert('facturen',[basis]);
-    console.warn('De facturen-tabel mist de kolommen regels, bijlagen of ur_omschr. Die zijn niet bewaard — voeg de kolommen toe in Supabase.');
+    console.warn('De facturen-tabel mist de kolommen regels, bijlagen, ur_omschr of uren_ids. Die zijn niet bewaard — voeg de kolommen toe in Supabase.');
   }
 }
 function gc(id){return db.clients.find(c=>c.id===id);}
@@ -1322,6 +1323,29 @@ function btwVermelding(c){
   const r=BTW_REGIMES[c.btwregime||''];
   return r?r.tekst:'';
 }
+// Zet de uren die op een factuur staan op gefactureerd en bewaart ze.
+// Geeft terug hoeveel registraties er effectief zijn omgezet.
+function markeerUrenVanFactuur(fd){
+  const ids=(fd&&fd.urenIds)||[];
+  const gewijzigd=[];
+  ids.forEach(id=>{
+    const e=db.entries.find(x=>x.id===id);
+    if(e&&!e.gefactureerd){e.gefactureerd=true;gewijzigd.push(e);}
+  });
+  gewijzigd.forEach(e=>saveEntry(e).catch(err=>console.error('SB markeer uur:',err)));
+  return gewijzigd.length;
+}
+// Draait dat terug wanneer een factuur wordt verwijderd, zodat die uren
+// opnieuw openstaan en niet stilletjes verloren gaan.
+function ontmarkeerUrenVanFactuur(f){
+  const ids=(f&&f.urenIds)||[];
+  let n=0;
+  ids.forEach(id=>{
+    const e=db.entries.find(x=>x.id===id);
+    if(e&&e.gefactureerd){e.gefactureerd=false;n++;saveEntry(e).catch(err=>console.error('SB ontmarkeer uur:',err));}
+  });
+  return n;
+}
 // De omschrijving van de samengevatte urenregel op de factuur.
 const STANDAARD_UROMSCHR='Consultancy diensten';
 function urenOmschrijving(){
@@ -1393,7 +1417,7 @@ function getFacData(){
     if(selIds&&selIds.length){
       urenRegels=db.entries.filter(e=>selIds.includes(e.id)&&e.facturabel!==false);
     }else{
-      urenRegels=db.entries.filter(e=>e.clientId===cid&&e.facturabel!==false);
+      urenRegels=db.entries.filter(e=>e.clientId===cid&&e.facturabel!==false&&!e.gefactureerd);
       if(van)urenRegels=urenRegels.filter(e=>e.datum>=van);
       if(tot)urenRegels=urenRegels.filter(e=>e.datum<=tot);
     }
@@ -1405,7 +1429,7 @@ function getFacData(){
   ];
   const subtotaal=allRegels.reduce((s,r)=>s+r.bedrag,0);
   const btwBedrag=subtotaal*btwPct/100;
-  return{cid,c,periode,van,tot,btwPct,nummer,po,datum,vervaldag,kenmerk,urOmschr:urenOmschrijving(),allRegels,subtotaal,btwBedrag,totaal:subtotaal+btwBedrag};
+  return{cid,c,periode,van,tot,btwPct,nummer,po,datum,vervaldag,kenmerk,urOmschr:urenOmschrijving(),urenIds:urenRegels.map(e=>e.id),allRegels,subtotaal,btwBedrag,totaal:subtotaal+btwBedrag};
 }
 function renderFac(){
   const{c,btwPct,nummer,po,datum,vervaldag,kenmerk,allRegels,subtotaal,btwBedrag,totaal}=getFacData();
@@ -1648,12 +1672,16 @@ async function opslaanFac(){
     return;
   }
   const periodeLabel=document.getElementById('f-periode').value||(fd.van&&fd.tot?fd.van.slice(0,7):'');
-  const newFac={id:db.nextId++,nummer:fd.nummer,po:fd.po,klant:fd.c.naam,klantId:fd.cid,datum:fd.datum,vervaldag:fd.vervaldag,kenmerk:fd.kenmerk,totaal:fd.totaal,subtotaal:fd.subtotaal,btwBedrag:fd.btwBedrag,btwPct:fd.btwPct,extra:[...facExtra],regels:fd.allRegels.map(r=>({...r})),urOmschr:fd.urOmschr,periode:periodeLabel};
+  const newFac={id:db.nextId++,nummer:fd.nummer,po:fd.po,klant:fd.c.naam,klantId:fd.cid,datum:fd.datum,vervaldag:fd.vervaldag,kenmerk:fd.kenmerk,totaal:fd.totaal,subtotaal:fd.subtotaal,btwBedrag:fd.btwBedrag,btwPct:fd.btwPct,extra:[...facExtra],regels:fd.allRegels.map(r=>({...r})),urOmschr:fd.urOmschr,urenIds:fd.urenIds||[],periode:periodeLabel};
   db.facturen.unshift(newFac);
   db.settings.facnr=voorgesteldFacNr();
   document.getElementById('f-nummer').value=db.settings.facnr;
-  alert('Factuur '+fd.nummer+' opgeslagen!');
-  facExtra=[];renderFac();
+  // De uren die op deze factuur staan, staan niet langer open.
+  const gefactureerd=markeerUrenVanFactuur(fd);
+  alert('Factuur '+fd.nummer+' opgeslagen!'+
+    (gefactureerd?'\n\n'+gefactureerd+' uurregistratie'+(gefactureerd===1?'':'s')+' gemarkeerd als gefactureerd.':''));
+  window._facSelectieIds=null;window._facSelectieCid=null;
+  facExtra=[];renderFac();renderOv();renderU();renderDash();
   try{await saveFactuur(newFac);await saveSettings();}catch(e){console.error('SB save factuur:',e);}
 }
 function facStatus(f){
@@ -1886,6 +1914,8 @@ async function delFac(id){
         :'\n\nLet op: er bestaan al hogere nummers, dus '+f.nummer+' komt niet vrij. Een gat in de nummering laat je beter staan, maak er een creditnota van als de factuur al verstuurd is.');
   if(!confirm(vraag))return;
   db.facturen=db.facturen.filter(x=>x.id!==id);
+  const terug=ontmarkeerUrenVanFactuur(f);
+  if(terug)setTimeout(()=>alert(terug+' uurregistratie'+(terug===1?'':'s')+' staan weer open en kunnen opnieuw gefactureerd worden.'),100);
   if(vrij){
     db.settings[teller]=f.nummer;
     try{await saveSettings();}catch(e){console.error('SB save settings:',e);}
@@ -2232,7 +2262,7 @@ function sbFactuurToLocal(r){
     totaal:parseFloat(r.totaal)||0,subtotaal:parseFloat(r.subtotaal)||0,
     btwBedrag:parseFloat(r.btw_bedrag)||0,btwPct:parseFloat(r.btw_pct)||0,
     extra:r.extra,regels:r.regels||null,bijlagen:r.bijlagen||[],
-    urOmschr:r.ur_omschr||'',
+    urOmschr:r.ur_omschr||'',urenIds:r.uren_ids||[],
     periode:r.periode||'',
     verzonden:r.verzonden||false,verzondenOp:r.verzonden_op,
     betaald:r.betaald||false,betaaldOp:r.betaald_op,
@@ -2355,9 +2385,17 @@ function openFacDetail(id){
   btnV.style.cssText=f.verzonden?'':'background:#EFF6FF;color:#1D4ED8;border-color:#BFDBFE;';
 
   // Regeloverzicht
-  const regels=f.extra||[];
-  const regelsHtml=regels.map(r=>`<tr><td>${r.omschrijving||'—'}</td><td style="text-align:right">${eur(r.bedrag)}</td></tr>`).join('');
-  document.getElementById('fdp-regels').innerHTML=regelsHtml||'<tr><td colspan="2" style="color:var(--text3);padding:8px 10px;">Geen extra regels (enkel uren)</td></tr>';
+  const alle=facRegels(f,true);
+  const uren=alle.filter(r=>r.type==='uren');
+  const andere=alle.filter(r=>r.type!=='uren');
+  let regelsHtml='';
+  if(uren.length){
+    const totU=uren.reduce((s,r)=>s+r.aantal,0);
+    const totB=uren.reduce((s,r)=>s+r.bedrag,0);
+    regelsHtml+=`<tr><td>${f.urOmschr||STANDAARD_UROMSCHR} <span style="color:var(--text3);font-size:11px;">(${uren.length} registratie${uren.length===1?'':'s'}, ${fmt(totU)} — urenspecificatie op pagina 2 van de PDF)</span></td><td style="text-align:right">${eur(totB)}</td></tr>`;
+  }
+  regelsHtml+=andere.map(r=>`<tr><td>${r.omschrijving||'—'}</td><td style="text-align:right">${eur(r.bedrag)}</td></tr>`).join('');
+  document.getElementById('fdp-regels').innerHTML=regelsHtml||'<tr><td colspan="2" style="color:var(--text3);padding:8px 10px;">Geen regels</td></tr>';
 
   fdpRenderBijlagen(f);
   document.getElementById('fac-detail-overlay').style.display='block';

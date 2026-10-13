@@ -227,7 +227,8 @@ input[type=checkbox]{width:auto;accent-color:var(--purple);}
       <button class="btn" onclick="exportCSV()">↓ CSV</button>
       <button class="btn btn-danger" onclick="deleteSelectie()" title="Verwijder geselecteerde uren">✕ Verwijder selectie</button>
       <button class="btn btn-danger" onclick="wisGefactureerde()" title="Verwijder alle als gefactureerd gemarkeerde uren">✕ Wis gefactureerde uren</button>
-      <button class="btn" onclick="markGefactureerd()" title="Markeer gefilterde factureerbare uren als gefactureerd">✓ Markeer gefactureerd</button>
+      <button class="btn" onclick="markGefactureerd()" title="Zet de aangevinkte uren op gefactureerd">✓ Markeer gefactureerd</button>
+      <button class="btn" onclick="zetTerugOpen()" title="Zet de aangevinkte uren terug op open">↺ Terug op open</button>
       <button class="btn" onclick="downloadUrenspec()">↓ Urenspecificatie PDF</button>
       <button class="btn btn-primary" onclick="factureerSelectie()">Factuur maken met selectie →</button>
     </div>
@@ -1047,8 +1048,11 @@ function renderOv(){
   document.getElementById('ov-klanten').textContent=new Set(en.map(e=>e.clientId)).size;
   const tbody=document.getElementById('ov-tbody');
   if(!en.length){tbody.innerHTML='<tr><td colspan="10" class="empty">Geen registraties</td></tr>';return;}
-  tbody.innerHTML=en.map(e=>{const c=gc(e.clientId);const fac=e.facturabel!==false;const canSel=fac&&!e.gefactureerd;return`<tr class="${fac?'':'niet-fac'}">
-    <td><input type="checkbox" class="ov-sel" data-id="${e.id}" ${canSel?'':'disabled'} onchange="ovSelChange()" style="width:14px;height:14px;accent-color:var(--purple);${canSel?'':'opacity:0.3;'}"></td>
+  tbody.innerHTML=en.map(e=>{const c=gc(e.clientId);const fac=e.facturabel!==false;
+    // Alles is aanvinkbaar: ook gefactureerde uren, zodat je ze kan terugzetten
+    // of verwijderen. Of ze op een factuur mogen, beslist het factuurscherm.
+    return`<tr class="${fac?'':'niet-fac'}">
+    <td><input type="checkbox" class="ov-sel" data-id="${e.id}" data-gefact="${e.gefactureerd?1:0}" data-fac="${fac?1:0}" onchange="ovSelChange()" style="width:14px;height:14px;accent-color:var(--purple);"></td>
     <td style="color:var(--text2);white-space:nowrap">${fmtDate(e.datum)}</td>
     <td><span class="badge ${c?.color||'c0'}">${c?.naam||'?'}</span></td>
     <td style="color:var(--text2);font-size:12px">${e.project||'—'}</td>
@@ -1062,14 +1066,14 @@ function renderOv(){
   ovSelChange();
 }
 function ovSelAll(cb){
-  document.querySelectorAll('.ov-sel:not(:disabled)').forEach(c=>c.checked=cb.checked);
+  document.querySelectorAll('.ov-sel').forEach(c=>c.checked=cb.checked);
   ovSelChange();
 }
 function ovSelChange(){
   const sel=Array.from(document.querySelectorAll('.ov-sel:checked'));
   const info=document.getElementById('ov-selectie-info');
   const allCb=document.getElementById('ov-sel-all');
-  const all=document.querySelectorAll('.ov-sel:not(:disabled)');
+  const all=document.querySelectorAll('.ov-sel');
   if(allCb)allCb.checked=all.length>0&&sel.length===all.length;
   if(!info)return;
   if(!sel.length){info.style.display='none';return;}
@@ -1078,7 +1082,9 @@ function ovSelChange(){
   const totU=entries.reduce((s,e)=>s+e.uren,0);
   const totB=entries.reduce((s,e)=>s+e.uren*e.tarief,0);
   info.style.display='';
-  info.textContent=sel.length+' uren geselecteerd — '+fmt(totU)+' — '+eur(totB);
+  const alGefact=entries.filter(e=>e.gefactureerd).length;
+  info.textContent=sel.length+' uren geselecteerd — '+fmt(totU)+' — '+eur(totB)+
+    (alGefact?' — waarvan '+alGefact+' al gefactureerd':'');
 }
 function getSelectedIds(){
   return Array.from(document.querySelectorAll('.ov-sel:checked')).map(c=>parseInt(c.dataset.id));
@@ -1120,6 +1126,10 @@ function factureerSelectie(){
   const entries=ids.map(id=>db.entries.find(e=>e.id===id)).filter(Boolean);
   const clientIds=[...new Set(entries.map(e=>e.clientId))];
   if(clientIds.length>1){alert('Je hebt uren van meerdere klanten geselecteerd. Kies uren van één klant.');return;}
+  const alGefact=entries.filter(e=>e.gefactureerd);
+  if(alGefact.length&&!confirm(alGefact.length+' van de geselecteerde uren staan al op gefactureerd.\n\nZe nu opnieuw factureren betekent dat je ze twee keer aanrekent. Toch doorgaan?'))return;
+  const nietFac=entries.filter(e=>e.facturabel===false);
+  if(nietFac.length)alert(nietFac.length+' geselecteerde uren staan op niet-facturabel en komen niet op de factuur.');
   const cid=clientIds[0];
   window._facSelectieIds=ids;
   window._facSelectieCid=cid;
@@ -2181,17 +2191,30 @@ function importBackup(evt){
 }
 
 // GEFACTUREERD
-function markGefactureerd(){
-  const en=getFilteredEntries().filter(e=>e.facturabel!==false&&!e.gefactureerd);
-  if(!en.length){alert('Geen open factureerbare uren in huidige filter.');return;}
-  if(!confirm(en.length+' uren markeren als gefactureerd?'))return;
+// Zet de status van uren om. Werkt op de aangevinkte regels; is er niets
+// aangevinkt, dan op alles wat het filter toont, na bevestiging.
+function zetGefactureerd(nieuweStatus){
+  const sel=getSelectedIds();
+  let en;
+  if(sel.length){
+    en=db.entries.filter(e=>sel.includes(e.id)&&!!e.gefactureerd!==nieuweStatus);
+    if(!en.length){alert('De geselecteerde uren staan al '+(nieuweStatus?'op gefactureerd':'open')+'.');return;}
+    const woord=nieuweStatus?'markeren als gefactureerd':'terugzetten op open';
+    if(!confirm(en.length+' geselecteerde uurregistratie'+(en.length===1?'':'s')+' '+woord+'?'))return;
+  }else{
+    en=getFilteredEntries().filter(e=>e.facturabel!==false&&!!e.gefactureerd!==nieuweStatus);
+    if(!en.length){alert('Geen uren in dit filter om '+(nieuweStatus?'te markeren':'terug te zetten')+'.');return;}
+    const woord=nieuweStatus?'markeren als gefactureerd':'terugzetten op open';
+    if(!confirm('Je hebt niets aangevinkt.\n\nAlle '+en.length+' uurregistraties in het huidige filter '+woord+'?\n\nVink regels aan als je er maar enkele wil.'))return;
+  }
   const ids=new Set(en.map(e=>e.id));
-  db.entries.forEach(e=>{if(ids.has(e.id))e.gefactureerd=true;});
-  renderOv();
-  // Update gefactureerd in Supabase in bulk
-  const updateRows=en.map(e=>({id:e.id,client_id:e.clientId,project:e.project||null,datum:e.datum,activiteit:e.activiteit||null,omschrijving:e.omschrijving||null,uren:e.uren,tarief:e.tarief,facturabel:e.facturabel!==false,gefactureerd:true,imported:e.imported||false}));
-  sbUpsert('entries',updateRows).catch(e=>console.error('SB mark gefactureerd:',e));
+  db.entries.forEach(e=>{if(ids.has(e.id))e.gefactureerd=nieuweStatus;});
+  renderOv();renderDash();renderU();
+  const rows=en.map(e=>({id:e.id,client_id:e.clientId,project:e.project||null,datum:e.datum,activiteit:e.activiteit||null,omschrijving:e.omschrijving||null,uren:e.uren,tarief:e.tarief,facturabel:e.facturabel!==false,gefactureerd:nieuweStatus,imported:e.imported||false}));
+  sbUpsert('entries',rows).catch(err=>console.error('SB status uren:',err));
 }
+function markGefactureerd(){zetGefactureerd(true);}
+function zetTerugOpen(){zetGefactureerd(false);}
 
 // BACKUP BANNER
 

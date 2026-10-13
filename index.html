@@ -325,6 +325,7 @@ input[type=checkbox]{width:auto;accent-color:var(--purple);}
       <div class="btn-row">
         <button class="btn" onclick="opslaanFac()">💾 Opslaan</button>
         <button class="btn" onclick="mailFactuur()" id="btn-mail-fac" title="Verstuur factuur PDF via je Outlook">✉ Mail naar klant</button>
+        <button class="btn" onclick="bekijkConceptPDF()">👁 Bekijk PDF</button>
         <button class="btn btn-primary" onclick="downloadFactuurPDF()">↓ Download factuur PDF</button>
       </div>
     </div>
@@ -374,6 +375,14 @@ input[type=checkbox]{width:auto;accent-color:var(--purple);}
 </div>
 
 <!-- FACTUUR DETAIL PANEEL -->
+<div id="pdf-viewer" style="display:none;position:fixed;inset:0;z-index:900;background:rgba(0,0,0,0.6);flex-direction:column;">
+  <div style="display:flex;align-items:center;gap:10px;padding:10px 16px;background:var(--bg);border-bottom:1px solid var(--border);">
+    <strong id="pdfv-titel" style="flex:1;font-size:14px;"></strong>
+    <button class="btn btn-sm" onclick="pdfvDownload()">↓ Download</button>
+    <button class="btn btn-sm" onclick="sluitPdfViewer()">✕ Sluiten</button>
+  </div>
+  <iframe id="pdfv-frame" style="flex:1;width:100%;border:0;background:#525659;"></iframe>
+</div>
 <div id="fac-detail-overlay" onclick="closeFacDetail(event)" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.35);z-index:500;"></div>
 <div id="fac-detail-panel" style="display:none;position:fixed;top:0;right:0;width:520px;max-width:100vw;height:100vh;background:var(--bg);border-left:1px solid var(--border);z-index:501;overflow-y:auto;flex-direction:column;">
   <div style="padding:1.25rem 1.5rem;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;background:var(--bg);z-index:2;">
@@ -397,6 +406,7 @@ input[type=checkbox]{width:auto;accent-color:var(--purple);}
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:1.25rem;">
       <button class="btn btn-sm" id="fdp-btn-betaald" onclick="fdpToggleBetaald()"></button>
       <button class="btn btn-sm" id="fdp-btn-verzonden" onclick="fdpToggleVerzonden()"></button>
+      <button class="btn btn-sm" onclick="fdpBekijk()" title="Bekijk de factuur in een venster">👁 Bekijk</button>
       <button class="btn btn-sm" onclick="fdpDownload()" title="Download factuur PDF">↓ PDF</button>
       <button class="btn btn-sm" id="fdp-btn-mail" onclick="fdpMailGraph()" title="Mail via Outlook">✉ Mail</button>
       <button class="btn btn-sm" onclick="fdpSamenvoegen()" title="Factuur + bijlagen samenvoegen tot 1 PDF">⊕ Samenvoegen</button>
@@ -1162,6 +1172,50 @@ function exportCSV(){
 }
 
 // PDF HEADER
+// ===== PDF BEKIJKEN IN DE APP =====
+// Toont een gegenereerde PDF in een venster met bladerbalk, zodat de factuur
+// en de urenspecificatie te bekijken zijn zonder eerst te downloaden.
+let _pdfvUrl=null,_pdfvNaam='factuur.pdf';
+function toonPdf(doc,naam){
+  if(!doc){alert('De PDF kon niet worden opgebouwd.');return;}
+  sluitPdfViewer();
+  _pdfvNaam=naam||'factuur.pdf';
+  _pdfvUrl=URL.createObjectURL(doc.output('blob'));
+  document.getElementById('pdfv-titel').textContent=_pdfvNaam+
+    (doc.getNumberOfPages()>1?' — '+doc.getNumberOfPages()+' pagina\'s':'');
+  document.getElementById('pdfv-frame').src=_pdfvUrl;
+  document.getElementById('pdf-viewer').style.display='flex';
+}
+function sluitPdfViewer(){
+  const v=document.getElementById('pdf-viewer');
+  if(v)v.style.display='none';
+  const f=document.getElementById('pdfv-frame');
+  if(f)f.src='about:blank';
+  if(_pdfvUrl){URL.revokeObjectURL(_pdfvUrl);_pdfvUrl=null;}
+}
+function pdfvDownload(){
+  if(!_pdfvUrl)return;
+  const a=document.createElement('a');
+  a.href=_pdfvUrl;a.download=_pdfvNaam;a.style.display='none';
+  document.body.appendChild(a);a.click();a.remove();
+}
+// Bekijk de PDF van een opgeslagen factuur.
+function bekijkFactuurPDF(id){
+  const f=db.facturen.find(x=>x.id===id);if(!f)return;
+  const{jsPDF}=window.jspdf;
+  const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
+  herdownloadDoc(f,doc);
+  toonPdf(doc,f.nummer+'.pdf');
+}
+// Bekijk de PDF van de factuur die nu wordt opgesteld.
+function bekijkConceptPDF(){
+  const fd=getFacData();
+  if(!fd.c){alert('Kies eerst een klant.');return;}
+  const{jsPDF}=window.jspdf;
+  const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
+  buildFactuurPDF({...fd,settings:db.settings},doc,true);
+  toonPdf(doc,(fd.nummer||'concept')+'.pdf');
+}
 function pdfSaveAs(doc,filename){
   const blob=doc.output('blob');
   const url=URL.createObjectURL(blob);
@@ -1672,6 +1726,7 @@ function buildFactuurPDF(d,externalDoc,returnDoc){
     });
   }
   if(!returnDoc)pdfSaveAs(doc,d.nummer+'.pdf');
+  return doc;
 }
 function downloadFactuurPDF(){const fd=getFacData();if(!fd.c){alert('Kies eerst een klant.');return;}buildFactuurPDF({...fd,settings:db.settings});}
 async function opslaanFac(){
@@ -1873,6 +1928,7 @@ function renderFL(){
         <button class="btn btn-sm" onclick="toggleVerzonden(${f.id})" title="${f.verzonden?'Markeer niet-verzonden':'Markeer verzonden'}" style="${f.verzonden?'':'background:#EFF6FF;color:#1D4ED8;border-color:#BFDBFE;'}">${f.verzonden?'📧':'📤'}</button>
         <button class="btn btn-sm" onclick="mailtoFac(${f.id})" title="Open in mailprogramma">✉</button>
         <button class="btn btn-sm" onclick="herinneringMail(${f.id})" title="Stuur betalingsherinnering">🔔</button>
+        <button class="btn btn-sm" onclick="bekijkFactuurPDF(${f.id})" title="Bekijk PDF">👁</button>
         <button class="btn btn-sm" onclick="herdownload(${f.id})" title="Download PDF">↓</button>
         <button class="btn btn-sm" onclick="dupliceerFac(${f.id})" title="Dupliceer factuur">⧉</button>
         <button class="btn btn-sm" onclick="maakCreditnota(${f.id})" title="Maak creditnota">CN</button>
@@ -2499,6 +2555,7 @@ async function fdpToggleVerzonden(){
   openFacDetail(_fdpId);
 }
 function fdpDownload(){if(_fdpId)herdownload(_fdpId);}
+function fdpBekijk(){if(_fdpId)bekijkFactuurPDF(_fdpId);}
 function fdpDuplicate(){if(_fdpId){closeFacDetailPanel();dupliceerFac(_fdpId);}}
 async function fdpDelete(){if(_fdpId){closeFacDetailPanel();await delFac(_fdpId);}}
 
@@ -2812,6 +2869,9 @@ async function mailFactuur(){
 async function startup(){
   document.getElementById('u-datum').value=td();
   initDropzone();
+  document.addEventListener('keydown',e=>{
+    if(e.key==='Escape'&&document.getElementById('pdf-viewer').style.display==='flex')sluitPdfViewer();
+  });
   document.getElementById('u-activiteit').addEventListener('change',uActChange);
   document.getElementById('u-facturabel').addEventListener('change',uCalc);
   laadSessie();

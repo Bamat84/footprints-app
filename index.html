@@ -823,6 +823,13 @@ function fmtBoth(h){return fmt(h)+' <span style="color:var(--text3);font-size:11
 function fmtDate(iso){if(!iso)return'—';const[y,m,d]=iso.split('-');return d+'-'+m+'-'+y;}
 function fmtDateSlash(iso){if(!iso)return'—';const[y,m,d]=iso.split('-');return d+'/'+m+'/'+y;}
 function eur(n){return'€ '+n.toLocaleString('nl-BE',{minimumFractionDigits:2,maximumFractionDigits:2});}
+// Tekst uit de database onschadelijk maken voor ze in de pagina wordt gezet.
+// Zonder dit kan een klantnaam of omschrijving met HTML erin code uitvoeren
+// in je eigen browser, en zo je sessie meenemen.
+function esc(v){
+  if(v==null)return'';
+  return String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
 // Bedragen op de PDF in Belgisch formaat: 16.666,66 in plaats van 16666.66
 function pdfNum(n){return(Number(n)||0).toLocaleString('nl-BE',{minimumFractionDigits:2,maximumFractionDigits:2});}
 function td(){return new Date().toISOString().slice(0,10);}
@@ -1003,10 +1010,10 @@ function renderU(){
   if(!r.length){tb.innerHTML='<tr><td colspan="8" class="empty">Nog geen eigen registraties — importeer TimeChimp-data via Instellingen</td></tr>';return;}
   tb.innerHTML=r.map(e=>{const c=gc(e.clientId);const fac=e.facturabel!==false;return`<tr class="${fac?'':'niet-fac'}">
     <td style="color:var(--text2);white-space:nowrap">${fmtDate(e.datum)}</td>
-    <td><span class="badge ${c?.color||'c0'}">${c?.naam||'?'}</span></td>
-    <td style="color:var(--text2);font-size:12px">${e.project||'—'}</td>
-    <td>${e.activiteit||'—'}</td>
-    <td style="color:var(--text2)">${e.omschrijving||'—'}</td>
+    <td><span class="badge ${c?.color||'c0'}">${esc(c?.naam||'?')}</span></td>
+    <td style="color:var(--text2);font-size:12px">${esc(e.project||'—')}</td>
+    <td>${esc(e.activiteit||'—')}</td>
+    <td style="color:var(--text2)">${esc(e.omschrijving||'—')}</td>
     <td style="text-align:right;font-weight:500;white-space:nowrap">${fmt(e.uren)}</td>
     <td style="text-align:right">${fac?eur(e.uren*e.tarief):'<span style="color:var(--text3)">—</span>'}</td>
     <td style="white-space:nowrap"><button class="btn btn-sm" onclick="editUur(${e.id})" title="Bewerken">✎</button> <button class="btn btn-sm btn-danger" onclick="delEntry(${e.id})">✕</button></td>
@@ -1064,10 +1071,10 @@ function renderOv(){
     return`<tr class="${fac?'':'niet-fac'}">
     <td><input type="checkbox" class="ov-sel" data-id="${e.id}" data-gefact="${e.gefactureerd?1:0}" data-fac="${fac?1:0}" onchange="ovSelChange()" style="width:14px;height:14px;accent-color:var(--purple);"></td>
     <td style="color:var(--text2);white-space:nowrap">${fmtDate(e.datum)}</td>
-    <td><span class="badge ${c?.color||'c0'}">${c?.naam||'?'}</span></td>
-    <td style="color:var(--text2);font-size:12px">${e.project||'—'}</td>
-    <td>${e.activiteit||'—'}</td>
-    <td style="color:var(--text2)">${e.omschrijving||'—'}</td>
+    <td><span class="badge ${c?.color||'c0'}">${esc(c?.naam||'?')}</span></td>
+    <td style="color:var(--text2);font-size:12px">${esc(e.project||'—')}</td>
+    <td>${esc(e.activiteit||'—')}</td>
+    <td style="color:var(--text2)">${esc(e.omschrijving||'—')}</td>
     <td style="text-align:right;font-weight:500;white-space:nowrap">${fmt(e.uren)}</td>
     <td style="text-align:right">${fac?eur(e.uren*e.tarief):'<span style="color:var(--text3)">—</span>'}</td>
     <td>${e.gefactureerd?'<span class="tag" style="background:#DCFCE7;color:#15803D">✓ gefact.</span>':fac?'<span class="tag">open</span>':''}</td>
@@ -1499,18 +1506,18 @@ function renderFac(){
   const{c,btwPct,nummer,po,datum,vervaldag,kenmerk,allRegels,subtotaal,btwBedrag,totaal}=getFacData();
   const s=db.settings;
   document.getElementById('fp-afzender').innerHTML=
-    `<strong>${s.naam}</strong><br>${s.adres}<br>${s.plaats}`+
-    (s.btw?`<br>${s.btw}`:'')+
+    `<strong>${esc(s.naam)}</strong><br>${esc(s.adres)}<br>${esc(s.plaats)}`+
+    (s.btw?`<br>${esc(s.btw)}`:'')+
     (s.iban?`<br>IBAN: ${s.iban}`:'')+
-    (s.email?`<br>${s.email}`:'')+
-    (s.tel?`<br>${s.tel}`:'');
+    (s.email?`<br>${esc(s.email)}`:'')+
+    (s.tel?`<br>${esc(s.tel)}`:'');
   if(c){
     document.getElementById('fp-ontvanger').innerHTML=
-      `<strong>${c.naam}</strong>`+
-      (c.nr?`<br>Klantnummer: <strong>${c.nr}</strong>`:'')+
-      (c.adres?`<br>${c.adres}`:'')+
-      (c.plaats?`<br>${c.plaats}`:'')+
-      (c.btw?`<br>BTW: ${c.btw}`:'')+
+      `<strong>${esc(c.naam)}</strong>`+
+      (c.nr?`<br>Klantnummer: <strong>${esc(c.nr)}</strong>`:'')+
+      (c.adres?`<br>${esc(c.adres)}`:'')+
+      (c.plaats?`<br>${esc(c.plaats)}`:'')+
+      (c.btw?`<br>BTW: ${esc(c.btw)}`:'')+
       `<br><br>Factuur: <strong>${nummer||'—'}</strong>`+
       (po?`<br>PO: <strong>${po}</strong>`:'')+
       `<br>Datum: <strong>${datum?fmtDateSlash(datum):'—'}</strong>`+
@@ -1537,7 +1544,7 @@ function renderFac(){
   }else{
     tbody.innerHTML=previewRows.map(r=>`<tr>
       <td style="color:var(--text2);white-space:nowrap">${r.datum?fmtDate(r.datum):'—'}</td>
-      <td>${r.omschrijving}${r.isSummary?` <span style="font-size:10px;color:var(--text3)">(${urenRegelsPreview.length} tijdregistraties — bijlage in PDF)</span>`:''}</td>
+      <td>${esc(r.omschrijving)}${r.isSummary?` <span style="font-size:10px;color:var(--text3)">(${urenRegelsPreview.length} tijdregistraties — bijlage in PDF)</span>`:''}</td>
       <td><span class="tag">${r.type==='uren'?'uren':r.type}</span></td>
       <td style="text-align:right">${r.type==='uren'?fmt(r.aantal):r.aantal}</td>
       <td style="text-align:right;color:var(--text2)">${r.type==='uren'?eur(r.prijs):'—'}</td>
@@ -1822,8 +1829,8 @@ function renderDash(){
     tb.innerHTML=aandacht.length?aandacht.map(f=>{
       const st=facStatus(f);
       return`<tr>
-        <td style="font-weight:500"><a href="#" onclick="naarFacturen('');return false;" style="color:var(--purple);text-decoration:none;">${f.nummer}</a></td>
-        <td>${f.klant}</td>
+        <td style="font-weight:500"><a href="#" onclick="naarFacturen('');return false;" style="color:var(--purple);text-decoration:none;">${esc(f.nummer)}</a></td>
+        <td>${esc(f.klant)}</td>
         <td style="text-align:right;font-weight:500">${eur(f.totaal)}</td>
         <td><span class="status-${st}">${facStatusTekst(f)}</span></td>
         <td style="text-align:right"><button class="btn btn-sm" onclick="toggleBetaald(${f.id})" style="background:#F0FDF4;border-color:#86EFAC;color:#15803D;">✓ Betaald</button></td>
@@ -1838,7 +1845,7 @@ function renderDash(){
     tb2.innerHTML=rijen.length?rijen.map(([cid,v])=>{
       const c=gc(parseInt(cid));
       return`<tr>
-        <td><span class="badge ${c?.color||'c0'}">${c?.naam||'onbekend'}</span></td>
+        <td><span class="badge ${c?.color||'c0'}">${esc(c?.naam||'onbekend')}</span></td>
         <td style="text-align:right;white-space:nowrap">${fmt(v.uren)}</td>
         <td style="text-align:right;font-weight:500">${eur(v.bedrag)}</td>
       </tr>`;}).join('')
@@ -1917,9 +1924,9 @@ function renderFL(){
     const st=facStatus(f);
     const badge=`<span class="status-${st}">${facStatusTekst(f)}</span>`;
     return`<tr>
-      <td style="font-weight:500"><a href="#" onclick="openFacDetail(${f.id});return false;" style="color:var(--purple);text-decoration:none;">${f.nummer}</a></td>
-      <td>${f.klant}</td>
-      <td style="color:var(--text2)">${f.po||'—'}</td>
+      <td style="font-weight:500"><a href="#" onclick="openFacDetail(${f.id});return false;" style="color:var(--purple);text-decoration:none;">${esc(f.nummer)}</a></td>
+      <td>${esc(f.klant)}</td>
+      <td style="color:var(--text2)">${esc(f.po||'—')}</td>
       <td style="color:var(--text2)">${f.datum?fmtDateSlash(f.datum):'—'}</td>
       <td style="text-align:right;font-weight:500">${eur(f.totaal)}</td>
       <td>${badge}</td>
@@ -2092,11 +2099,11 @@ function renderK(){
   const list=kCurrentFilter==='active'?active:archived;
   if(!list.length){tbody.innerHTML='<tr><td colspan="8" class="empty">Geen klanten</td></tr>';return;}
   tbody.innerHTML=list.map(c=>`<tr>
-    <td style="font-weight:500;color:var(--text2)">${c.nr||'—'}</td>
-    <td><span class="badge ${c.color}">${c.naam}</span></td>
+    <td style="font-weight:500;color:var(--text2)">${esc(c.nr||'—')}</td>
+    <td><span class="badge ${c.color}">${esc(c.naam)}</span></td>
     <td style="color:var(--text2);font-size:12px">${[c.adres,c.plaats].filter(Boolean).join(', ')||'—'}</td>
-    <td style="color:var(--text2);font-size:12px">${c.btw||'—'}</td>
-    <td style="color:var(--text2);font-size:12px">${c.project||'—'}</td>
+    <td style="color:var(--text2);font-size:12px">${esc(c.btw||'—')}</td>
+    <td style="color:var(--text2);font-size:12px">${esc(c.project||'—')}</td>
     <td style="text-align:right">€ ${c.tarief}/u</td>
     <td style="text-align:right;font-weight:500">${omzetKlant(c.id)?eur(omzetKlant(c.id)):'—'}</td>
     <td style="text-align:right;white-space:nowrap;">
@@ -2473,7 +2480,7 @@ function openFacDetail(id){
     const totB=uren.reduce((s,r)=>s+r.bedrag,0);
     regelsHtml+=`<tr><td>${f.urOmschr||STANDAARD_UROMSCHR} <span style="color:var(--text3);font-size:11px;">(${uren.length} registratie${uren.length===1?'':'s'}, ${fmt(totU)} — urenspecificatie op pagina 2 van de PDF)</span></td><td style="text-align:right">${eur(totB)}</td></tr>`;
   }
-  regelsHtml+=andere.map(r=>`<tr><td>${r.omschrijving||'—'}</td><td style="text-align:right">${eur(r.bedrag)}</td></tr>`).join('');
+  regelsHtml+=andere.map(r=>`<tr><td>${esc(r.omschrijving||'—')}</td><td style="text-align:right">${eur(r.bedrag)}</td></tr>`).join('');
   document.getElementById('fdp-regels').innerHTML=regelsHtml||'<tr><td colspan="2" style="color:var(--text3);padding:8px 10px;">Geen regels</td></tr>';
 
   fdpRenderBijlagen(f);
@@ -2530,7 +2537,7 @@ function fdpRenderBijlagen(f){
   lijst.innerHTML=bijlagen.map((b,i)=>`
     <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);">
       <span style="font-size:18px;">${b.type==='pdf'?'📄':'🖼'}</span>
-      <span style="font-size:13px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${b.naam}</span>
+      <span style="font-size:13px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(b.naam)}</span>
       <span style="font-size:11px;color:var(--text3);white-space:nowrap;">${bijlageGrootte(b)}</span>
       <button class="btn btn-sm" onclick="fdpDownloadBijlage(${i})" title="Download">↓</button>
       <button class="btn btn-sm btn-danger" onclick="fdpDelBijlage(${i})" title="Verwijder">✕</button>
@@ -2576,7 +2583,7 @@ async function fdpMailGraph(){
     const filename=f.nummer+'.pdf';
     const token=await getGraphToken();
     const subject='Factuur '+f.nummer+' — '+(db.settings.naam||'FootPrints SRL');
-    const bodyHtml=`<p>Beste ${c.naam||klantEmail},</p><p>In bijlage vindt u factuur ${f.nummer}.</p><p>Met vriendelijke groeten,<br>${db.settings.naam||'FootPrints SRL'}</p>`;
+    const bodyHtml=`<p>Beste ${c.naam||klantEmail},</p><p>In bijlage vindt u factuur ${esc(f.nummer)}.</p><p>Met vriendelijke groeten,<br>${db.settings.naam||'FootPrints SRL'}</p>`;
     const attachments=[{
       '@odata.type':'#microsoft.graph.fileAttachment',
       name:filename,contentType:'application/pdf',contentBytes:pdfB64

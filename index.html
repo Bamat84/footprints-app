@@ -312,7 +312,7 @@ input[type=checkbox]{width:auto;accent-color:var(--purple);}
         <div class="fr c4">
           <div><label>Omschrijving</label><input type="text" id="ok-omschr" placeholder="Reiskosten"></div>
           <div><label>Datum</label><input type="date" id="ok-datum"></div>
-          <div><label>Bedrag excl. BTW (€)</label><input type="number" id="ok-bedrag" placeholder="45"></div>
+          <div><label>Bedrag zoals betaald</label><input type="number" step="0.01" id="ok-bedrag" placeholder="45"></div>
           <div><label>&nbsp;</label><button class="btn btn-primary" style="width:100%;justify-content:center;" onclick="addOnkost()">+ Voeg toe</button></div>
         </div>
       </div>
@@ -461,7 +461,7 @@ input[type=checkbox]{width:auto;accent-color:var(--purple);}
       <div><label>Klant</label><select id="on-klant"><option value="">— kies klant —</option></select></div>
       <div><label>Datum</label><input type="date" id="on-datum"></div>
       <div><label>Omschrijving</label><input type="text" id="on-omschr" placeholder="Trein Gent — Brussel"></div>
-      <div><label>Bedrag excl. btw (€)</label><input type="number" step="0.01" id="on-bedrag" placeholder="24,60"></div>
+      <div><label>Bedrag zoals betaald</label><input type="number" step="0.01" id="on-bedrag" placeholder="24,60"><div style="font-size:11px;color:var(--text3);margin-top:3px;">Het volledige bedrag van je ticket of bon, btw inbegrepen. Op de factuur komt daar 21% btw bovenop.</div></div>
     </div>
     <div class="fr c3">
       <div><label>Doorrekenen aan klant</label><div style="display:flex;align-items:center;gap:8px;height:35px;"><input type="checkbox" id="on-doorrekenen" checked style="width:16px;height:16px;"> <span style="font-size:13px;">Ja</span></div></div>

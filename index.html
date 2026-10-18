@@ -26,7 +26,7 @@ h2{font-size:11px;font-weight:600;margin-bottom:1rem;color:var(--text2);text-tra
 .stat{background:var(--bg);border:1px solid var(--border);border-radius:var(--rl);padding:1rem;}
 .stat-label{font-size:12px;color:var(--text2);margin-bottom:4px;}.stat-val{font-size:22px;font-weight:600;}
 .stat-sub{font-size:11px;color:var(--text3);margin-top:3px;min-height:14px;}
-#dash-stats{grid-template-columns:repeat(4,1fr);}
+#dash-stats{grid-template-columns:repeat(5,1fr);}
 #dash-stats .stat:hover{border-color:var(--purple);}
 .dash-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:1.25rem;}
 @media(max-width:1100px){#dash-stats{grid-template-columns:repeat(2,1fr);}.dash-grid{grid-template-columns:1fr;}}
@@ -97,6 +97,9 @@ input[type=checkbox]{width:auto;accent-color:var(--purple);}
     <a onclick="showPage('overzicht')" id="nav-overzicht">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>Timesheet
     </a>
+    <a onclick="showPage('onkosten')" id="nav-onkosten">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="6" width="20" height="13" rx="2"/><path d="M2 11h20"/><path d="M7 16h4"/></svg>Onkosten
+    </a>
     <a onclick="showPage('factuur')" id="nav-factuur">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg>Facturen
     </a>
@@ -117,6 +120,7 @@ input[type=checkbox]{width:auto;accent-color:var(--purple);}
     <div class="stat" onclick="naarFacturen('vervallen')" style="cursor:pointer;"><div class="stat-label">Vervallen →</div><div class="stat-val" id="dash-vervallen" style="color:#B91C1C">€ 0</div><div class="stat-sub" id="dash-vervallen-sub"></div></div>
     <div class="stat" onclick="naarFacturen('open')" style="cursor:pointer;"><div class="stat-label">Openstaand →</div><div class="stat-val" id="dash-open" style="color:#B45309">€ 0</div><div class="stat-sub" id="dash-open-sub"></div></div>
     <div class="stat" onclick="showPage('overzicht')" style="cursor:pointer;"><div class="stat-label">Nog te factureren →</div><div class="stat-val" id="dash-tefact" style="color:var(--purple)">€ 0</div><div class="stat-sub" id="dash-tefact-sub"></div></div>
+    <div class="stat" onclick="showPage('onkosten')" style="cursor:pointer;"><div class="stat-label">Onkosten door te rekenen →</div><div class="stat-val" id="dash-onkost" style="color:#B45309">€ 0</div><div class="stat-sub" id="dash-onkost-sub"></div></div>
     <div class="stat" onclick="naarFacturen('betaald')" style="cursor:pointer;"><div class="stat-label">Betaald dit jaar →</div><div class="stat-val" id="dash-betaald" style="color:#15803D">€ 0</div><div class="stat-sub" id="dash-betaald-sub"></div></div>
   </div>
 
@@ -257,6 +261,14 @@ input[type=checkbox]{width:auto;accent-color:var(--purple);}
             </label>
           </div>
         </div>
+      </div>
+      <!-- Openstaande onkosten van deze klant -->
+      <div id="f-onkosten-blok" style="display:none;background:#FEF7E6;border:1px solid #E8B948;border-radius:var(--r);padding:10px 12px;margin-bottom:10px;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+          <strong style="font-size:12px;color:#7A5A00;flex:1;" id="f-onkosten-titel"></strong>
+          <button class="btn btn-sm" onclick="neemOnkostenOver()" style="background:#E8B948;border-color:#C99A2E;color:#3D2E00;">Alle toevoegen</button>
+        </div>
+        <div id="f-onkosten-lijst" style="font-size:12px;"></div>
       </div>
       <!-- Uren-filter: enkel bij uren-factuur -->
       <div id="f-uren-filter" style="margin-bottom:10px;">
@@ -435,6 +447,44 @@ input[type=checkbox]{width:auto;accent-color:var(--purple);}
 </div>
 
 <!-- KLANTEN -->
+<!-- ONKOSTEN -->
+<div class="page" id="page-onkosten">
+  <h1>Onkosten</h1>
+  <div class="stats">
+    <div class="stat"><div class="stat-label">Nog door te rekenen</div><div class="stat-val" id="ok-open-bedrag" style="color:var(--purple)">€ 0</div><div class="stat-sub" id="ok-open-sub"></div></div>
+    <div class="stat"><div class="stat-label">Al doorgerekend</div><div class="stat-val" id="ok-gefact-bedrag" style="color:#15803D">€ 0</div><div class="stat-sub" id="ok-gefact-sub"></div></div>
+    <div class="stat"><div class="stat-label">Niet doorrekenbaar</div><div class="stat-val" id="ok-eigen-bedrag" style="color:var(--text2)">€ 0</div><div class="stat-sub" id="ok-eigen-sub"></div></div>
+  </div>
+  <div class="card">
+    <h2>Nieuwe onkost</h2>
+    <div class="fr c4">
+      <div><label>Klant</label><select id="on-klant"><option value="">— kies klant —</option></select></div>
+      <div><label>Datum</label><input type="date" id="on-datum"></div>
+      <div><label>Omschrijving</label><input type="text" id="on-omschr" placeholder="Trein Gent — Brussel"></div>
+      <div><label>Bedrag excl. btw (€)</label><input type="number" step="0.01" id="on-bedrag" placeholder="24,60"></div>
+    </div>
+    <div class="fr c3">
+      <div><label>Doorrekenen aan klant</label><div style="display:flex;align-items:center;gap:8px;height:35px;"><input type="checkbox" id="on-doorrekenen" checked style="width:16px;height:16px;"> <span style="font-size:13px;">Ja</span></div></div>
+      <div><label>Bewijsstuk</label><label class="btn btn-sm" style="cursor:pointer;margin:0;width:100%;justify-content:center;" id="on-bijlage-lbl">Kies bestand<input type="file" id="on-bijlage" accept=".pdf,image/*" style="display:none;" onchange="onBijlageGekozen(this)"></label></div>
+      <div><label>&nbsp;</label><div id="on-edit-banner" style="display:none;font-size:12px;color:var(--purple);margin-bottom:6px;padding:6px 10px;background:var(--purple-l);border-radius:var(--r);border:1px solid var(--purple);">✎ Onkost bewerken — <a href="#" onclick="cancelEditOnkost();return false;" style="color:var(--purple)">annuleer</a></div><button id="on-save-btn" class="btn btn-primary" style="width:100%;justify-content:center;" onclick="addOnkostPost()">+ Toevoegen</button></div>
+    </div>
+  </div>
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:1rem;">
+    <span style="font-size:13px;color:var(--text2);">Toon:</span>
+    <select id="on-filter" onchange="renderOnkosten()" style="width:auto;">
+      <option value="open">Nog door te rekenen</option>
+      <option value="gefactureerd">Al doorgerekend</option>
+      <option value="eigen">Niet doorrekenbaar</option>
+      <option value="">Alles</option>
+    </select>
+    <select id="on-fklant" onchange="renderOnkosten()" style="width:auto;"><option value="">Alle klanten</option></select>
+  </div>
+  <div class="card" style="padding:0;overflow:hidden;">
+    <table><thead><tr><th>Datum</th><th>Klant</th><th>Omschrijving</th><th style="text-align:right">Bedrag</th><th>Status</th><th>Bewijs</th><th></th></tr></thead>
+    <tbody id="on-tbody"></tbody></table>
+  </div>
+</div>
+
 <div class="page" id="page-klanten">
   <h1>Klanten & projecten</h1>
   <div class="card">
@@ -737,6 +787,7 @@ let db={
     {id:134,nr:'025',naam:'CAKE NV',adres:'Hendrik van Veldekesingel 150',plaats:'3500 Hasselt',land:'be',btw:'',email:'',project:'CAKE NV',tarief:125,color:'c4b',archived:true},
   ],
   entries:[],
+  onkosten:[],
   facturen:[],
   nextId:200
 };
@@ -845,6 +896,7 @@ function showPage(name){
   if(name==='dashboard')renderDash();
   if(name==='overzicht'){fillSels();renderOv();}
   if(name==='factuur'){fillSels();initFac();}
+  if(name==='onkosten'){fillSels();if(!document.getElementById('on-datum').value)document.getElementById('on-datum').value=td();renderOnkosten();}
   if(name==='klanten')renderK();
   if(name==='instellingen'){loadSett();checkImport();}
 }
@@ -860,10 +912,10 @@ function regelTab(n){
   document.getElementById('rt-onkost').classList.toggle('active',n==='onkost');
 }
 function fillSels(){
-  ['u-klant','ov-fk','f-klant'].forEach(id=>{
+  ['u-klant','ov-fk','f-klant','on-klant','on-fklant'].forEach(id=>{
     const s=document.getElementById(id);if(!s)return;
     const v=s.value;
-    s.innerHTML=id==='ov-fk'?'<option value="">Alle klanten</option>':'<option value="">— kies klant —</option>';
+    s.innerHTML=(id==='ov-fk'||id==='on-fklant')?'<option value="">Alle klanten</option>':'<option value="">— kies klant —</option>';
     db.clients.filter(c=>!c.archived).forEach(c=>{const o=document.createElement('option');o.value=c.id;o.textContent=c.naam+(c.nr?' ('+c.nr+')':'');s.appendChild(o);});
     s.value=v;
   });
@@ -1406,6 +1458,32 @@ function markeerUrenVanFactuur(fd){
   gewijzigd.forEach(e=>saveEntry(e).catch(err=>console.error('SB markeer uur:',err)));
   return gewijzigd.length;
 }
+// Zet de onkosten die op deze factuur zijn overgenomen op doorgerekend, met
+// het factuurnummer erbij zodat je later ziet waar ze op stonden.
+function markeerOnkostenVanFactuur(fac){
+  const ids=(fac.extra||[]).map(r=>r.onkostId).filter(Boolean);
+  let n=0;
+  ids.forEach(id=>{
+    const o=db.onkosten.find(x=>x.id===id);
+    if(o&&!o.gefactureerd){
+      o.gefactureerd=true;o.factuurNr=fac.nummer||'';n++;
+      saveOnkost(o).catch(e=>console.error('SB markeer onkost:',e));
+    }
+  });
+  return n;
+}
+function ontmarkeerOnkostenVanFactuur(fac){
+  const ids=(fac.extra||[]).map(r=>r.onkostId).filter(Boolean);
+  let n=0;
+  ids.forEach(id=>{
+    const o=db.onkosten.find(x=>x.id===id);
+    if(o&&o.gefactureerd){
+      o.gefactureerd=false;o.factuurNr='';n++;
+      saveOnkost(o).catch(e=>console.error('SB ontmarkeer onkost:',e));
+    }
+  });
+  return n;
+}
 // Draait dat terug wanneer een factuur wordt verwijderd, zodat die uren
 // opnieuw openstaan en niet stilletjes verloren gaan.
 function ontmarkeerUrenVanFactuur(f){
@@ -1459,6 +1537,151 @@ function addVrij(){
   facExtra.push({id:db.nextId++,type:'vrij',datum:'',omschrijving:o,bedrag:b});
   document.getElementById('vr-omschr').value='';document.getElementById('vr-bedrag').value='';renderFac();
 }
+// ===== ONKOSTEN =====
+// Onkosten worden geregistreerd op het moment dat je ze maakt, met de klant
+// erbij. Bij het opstellen van een factuur komen de openstaande onkosten van
+// die klant vanzelf boven, zodat doorrekenen niet meer van het geheugen
+// afhangt.
+let _editOnkostId=null, _onBijlage=null;
+
+async function onBijlageGekozen(input){
+  const file=input.files&&input.files[0];
+  if(!file){_onBijlage=null;return;}
+  const isPdf=file.type==='application/pdf';
+  const isImg=file.type.startsWith('image/');
+  if(!isPdf&&!isImg){alert('Kies een PDF of een afbeelding.');input.value='';return;}
+  let data,mime=file.type;
+  if(isImg){const r=await verkleinAfbeelding(file);data=r.data;mime=r.mime;}
+  else{
+    if(file.size>3*1024*1024){
+      const mb=(file.size/1048576).toFixed(1).replace('.',',');
+      if(!confirm(file.name+' weegt '+mb+' MB. Toch toevoegen?')){input.value='';return;}
+    }
+    data=await new Promise((res,rej)=>{const r=new FileReader();r.onload=e=>res(e.target.result.split(',')[1]);r.onerror=rej;r.readAsDataURL(file);});
+  }
+  _onBijlage={naam:file.name,type:isPdf?'pdf':'img',mime,data};
+  document.getElementById('on-bijlage-lbl').childNodes[0].nodeValue='✓ '+file.name.slice(0,18);
+}
+function onBijlageReset(){
+  _onBijlage=null;
+  const inp=document.getElementById('on-bijlage');if(inp)inp.value='';
+  const lbl=document.getElementById('on-bijlage-lbl');if(lbl)lbl.childNodes[0].nodeValue='Kies bestand';
+}
+async function addOnkostPost(){
+  const cid=parseInt(document.getElementById('on-klant').value);
+  const datum=document.getElementById('on-datum').value;
+  const omschrijving=document.getElementById('on-omschr').value.trim();
+  const bedrag=parseFloat(document.getElementById('on-bedrag').value);
+  const doorrekenen=document.getElementById('on-doorrekenen').checked;
+  if(!datum||!omschrijving||!bedrag){alert('Vul datum, omschrijving en bedrag in.');return;}
+  if(doorrekenen&&!cid){alert('Kies een klant, of zet "Doorrekenen aan klant" af.');return;}
+  if(_editOnkostId){
+    const o=db.onkosten.find(x=>x.id===_editOnkostId);
+    if(o){
+      o.clientId=cid||null;o.datum=datum;o.omschrijving=omschrijving;
+      o.bedrag=bedrag;o.doorrekenen=doorrekenen;
+      if(_onBijlage)o.bijlage=_onBijlage;
+      saveOnkost(o).catch(e=>console.error('SB save onkost:',e));
+    }
+    cancelEditOnkost();renderOnkosten();renderDash();return;
+  }
+  const nieuw={id:db.nextId++,clientId:cid||null,datum,omschrijving,bedrag,
+    doorrekenen,gefactureerd:false,factuurNr:'',bijlage:_onBijlage};
+  db.onkosten.unshift(nieuw);
+  ['on-omschr','on-bedrag'].forEach(id=>document.getElementById(id).value='');
+  onBijlageReset();
+  renderOnkosten();renderDash();
+  try{await saveOnkost(nieuw);await saveSettings();}catch(e){console.error('SB save onkost:',e);}
+}
+function editOnkost(id){
+  const o=db.onkosten.find(x=>x.id===id);if(!o)return;
+  _editOnkostId=id;
+  document.getElementById('on-klant').value=o.clientId||'';
+  document.getElementById('on-datum').value=o.datum||'';
+  document.getElementById('on-omschr').value=o.omschrijving||'';
+  document.getElementById('on-bedrag').value=o.bedrag||'';
+  document.getElementById('on-doorrekenen').checked=o.doorrekenen!==false;
+  document.getElementById('on-save-btn').textContent='Onkost opslaan';
+  document.getElementById('on-edit-banner').style.display='';
+  document.getElementById('on-klant').scrollIntoView({behavior:'smooth',block:'center'});
+}
+function cancelEditOnkost(){
+  _editOnkostId=null;
+  ['on-omschr','on-bedrag'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  onBijlageReset();
+  const b=document.getElementById('on-save-btn');if(b)b.textContent='+ Toevoegen';
+  const ban=document.getElementById('on-edit-banner');if(ban)ban.style.display='none';
+}
+async function delOnkost(id){
+  const o=db.onkosten.find(x=>x.id===id);if(!o)return;
+  if(o.gefactureerd&&!confirm('Deze onkost staat al op factuur '+(o.factuurNr||'?')+'.\n\nToch verwijderen?'))return;
+  if(!o.gefactureerd&&!confirm('Onkost verwijderen?'))return;
+  db.onkosten=db.onkosten.filter(x=>x.id!==id);
+  renderOnkosten();renderDash();
+  try{await sbDelete('onkosten','id=eq.'+id);}catch(e){console.error('SB delete onkost:',e);}
+}
+async function onToggleGefactureerd(id){
+  const o=db.onkosten.find(x=>x.id===id);if(!o)return;
+  o.gefactureerd=!o.gefactureerd;
+  if(!o.gefactureerd)o.factuurNr='';
+  renderOnkosten();renderDash();
+  try{await saveOnkost(o);}catch(e){console.error('SB onkost status:',e);}
+}
+function onBijlageDownload(id){
+  const o=db.onkosten.find(x=>x.id===id);if(!o||!o.bijlage)return;
+  const a=document.createElement('a');
+  a.href='data:'+(o.bijlage.mime||'application/octet-stream')+';base64,'+o.bijlage.data;
+  a.download=o.bijlage.naam||'bewijsstuk';
+  document.body.appendChild(a);a.click();a.remove();
+}
+// Openstaande, doorrekenbare onkosten van een klant.
+function openOnkosten(cid){
+  return db.onkosten.filter(o=>o.clientId===cid&&o.doorrekenen!==false&&!o.gefactureerd);
+}
+function renderOnkosten(){
+  const tb=document.getElementById('on-tbody');
+  if(!tb)return;
+  const filter=document.getElementById('on-filter')?.value||'';
+  const kid=document.getElementById('on-fklant')?.value||'';
+  const doorrekenbaar=db.onkosten.filter(o=>o.doorrekenen!==false);
+  const open=doorrekenbaar.filter(o=>!o.gefactureerd);
+  const gefact=doorrekenbaar.filter(o=>o.gefactureerd);
+  const eigen=db.onkosten.filter(o=>o.doorrekenen===false);
+  const zet=(id,t)=>{const el=document.getElementById(id);if(el)el.textContent=t;};
+  zet('ok-open-bedrag',eur(open.reduce((s,o)=>s+o.bedrag,0)));
+  zet('ok-open-sub',open.length?open.length+' onkost'+(open.length===1?'':'en')+' wacht op een factuur':'niets open');
+  zet('ok-gefact-bedrag',eur(gefact.reduce((s,o)=>s+o.bedrag,0)));
+  zet('ok-gefact-sub',gefact.length+' doorgerekend');
+  zet('ok-eigen-bedrag',eur(eigen.reduce((s,o)=>s+o.bedrag,0)));
+  zet('ok-eigen-sub',eigen.length+' voor eigen rekening');
+
+  let lijst=db.onkosten;
+  if(filter==='open')lijst=open;
+  else if(filter==='gefactureerd')lijst=gefact;
+  else if(filter==='eigen')lijst=eigen;
+  if(kid)lijst=lijst.filter(o=>String(o.clientId)===kid);
+  if(!lijst.length){tb.innerHTML='<tr><td colspan="7" class="empty">Geen onkosten in deze selectie</td></tr>';return;}
+  tb.innerHTML=lijst.map(o=>{
+    const c=gc(o.clientId);
+    const st=o.doorrekenen===false
+      ? '<span style="font-size:11px;color:var(--text3);">eigen rekening</span>'
+      : (o.gefactureerd
+          ? '<span class="status-betaald">✓ '+(esc(o.factuurNr)||'doorgerekend')+'</span>'
+          : '<span class="status-open">open</span>');
+    return`<tr>
+      <td style="color:var(--text2);white-space:nowrap">${fmtDate(o.datum)}</td>
+      <td>${c?`<span class="badge ${c.color||'c0'}">${esc(c.naam)}</span>`:'<span style="color:var(--text3)">—</span>'}</td>
+      <td>${esc(o.omschrijving)}</td>
+      <td style="text-align:right;font-weight:500;white-space:nowrap">${eur(o.bedrag)}</td>
+      <td>${st}</td>
+      <td>${o.bijlage?`<button class="btn btn-sm" onclick="onBijlageDownload(${o.id})" title="${esc(o.bijlage.naam)}">↓</button>`:'<span style="color:var(--text3);font-size:11px;">—</span>'}</td>
+      <td style="white-space:nowrap;text-align:right">
+        ${o.doorrekenen===false?'':`<button class="btn btn-sm" onclick="onToggleGefactureerd(${o.id})" title="${o.gefactureerd?'Terug op open':'Markeer doorgerekend'}">${o.gefactureerd?'↺':'✓'}</button>`}
+        <button class="btn btn-sm" onclick="editOnkost(${o.id})" title="Bewerken">✎</button>
+        <button class="btn btn-sm btn-danger" onclick="delOnkost(${o.id})">✕</button>
+      </td>
+    </tr>`;}).join('');
+}
 function addOnkost(){
   const o=document.getElementById('ok-omschr').value.trim();
   const d=document.getElementById('ok-datum').value;
@@ -1502,9 +1725,41 @@ function getFacData(){
   const btwBedrag=subtotaal*btwPct/100;
   return{cid,c,periode,van,tot,btwPct,nummer,po,datum,vervaldag,kenmerk,urOmschr:urenOmschrijving(),urenIds:urenRegels.map(e=>e.id),allRegels,subtotaal,btwBedrag,totaal:subtotaal+btwBedrag};
 }
+// Toont de openstaande onkosten van de gekozen klant boven het factuurscherm,
+// zodat doorrekenen niet van het geheugen afhangt.
+function renderOnkostenBlok(cid){
+  const blok=document.getElementById('f-onkosten-blok');
+  if(!blok)return;
+  const open=cid?openOnkosten(cid).filter(o=>!facExtra.some(r=>r.onkostId===o.id)):[];
+  if(!open.length){blok.style.display='none';return;}
+  const tot=open.reduce((s,o)=>s+o.bedrag,0);
+  document.getElementById('f-onkosten-titel').textContent=
+    open.length+' onkost'+(open.length===1?'':'en')+' nog niet doorgerekend — '+eur(tot);
+  document.getElementById('f-onkosten-lijst').innerHTML=open.map(o=>
+    `<div style="display:flex;align-items:center;gap:8px;padding:3px 0;">
+      <span style="color:#7A5A00;white-space:nowrap">${fmtDate(o.datum)}</span>
+      <span style="flex:1;color:#3D2E00">${esc(o.omschrijving)}</span>
+      <span style="font-weight:600;color:#3D2E00">${eur(o.bedrag)}</span>
+      <button class="btn btn-sm" onclick="neemOnkostOver(${o.id})" style="font-size:11px;padding:2px 8px;">+ Toevoegen</button>
+    </div>`).join('');
+  blok.style.display='';
+}
+function neemOnkostOver(id){
+  const o=db.onkosten.find(x=>x.id===id);if(!o)return;
+  facExtra.push({id:db.nextId++,type:'onkost',datum:o.datum,omschrijving:o.omschrijving,bedrag:o.bedrag,onkostId:o.id});
+  renderFac();
+}
+function neemOnkostenOver(){
+  const cid=parseInt(document.getElementById('f-klant').value);
+  if(!cid)return;
+  openOnkosten(cid).filter(o=>!facExtra.some(r=>r.onkostId===o.id))
+    .forEach(o=>facExtra.push({id:db.nextId++,type:'onkost',datum:o.datum,omschrijving:o.omschrijving,bedrag:o.bedrag,onkostId:o.id}));
+  renderFac();
+}
 function renderFac(){
   const{c,btwPct,nummer,po,datum,vervaldag,kenmerk,allRegels,subtotaal,btwBedrag,totaal}=getFacData();
   const s=db.settings;
+  renderOnkostenBlok(parseInt(document.getElementById('f-klant').value)||null);
   document.getElementById('fp-afzender').innerHTML=
     `<strong>${esc(s.naam)}</strong><br>${esc(s.adres)}<br>${esc(s.plaats)}`+
     (s.btw?`<br>${esc(s.btw)}`:'')+
@@ -1750,10 +2005,12 @@ async function opslaanFac(){
   document.getElementById('f-nummer').value=db.settings.facnr;
   // De uren die op deze factuur staan, staan niet langer open.
   const gefactureerd=markeerUrenVanFactuur(fd);
+  const onkOk=markeerOnkostenVanFactuur(newFac);
   alert('Factuur '+fd.nummer+' opgeslagen!'+
-    (gefactureerd?'\n\n'+gefactureerd+' uurregistratie'+(gefactureerd===1?'':'s')+' gemarkeerd als gefactureerd.':''));
+    (gefactureerd?'\n\n'+gefactureerd+' uurregistratie'+(gefactureerd===1?'':'s')+' gemarkeerd als gefactureerd.':'')+
+    (onkOk?'\n'+onkOk+' onkost'+(onkOk===1?'':'en')+' gemarkeerd als doorgerekend.':''));
   window._facSelectieIds=null;window._facSelectieCid=null;
-  facExtra=[];renderFac();renderOv();renderU();renderDash();
+  facExtra=[];renderFac();renderOv();renderU();renderDash();renderOnkosten();
   try{await saveFactuur(newFac);await saveSettings();}catch(e){console.error('SB save factuur:',e);}
 }
 function facStatus(f){
@@ -1818,6 +2075,9 @@ function renderDash(){
   zet('dash-open-sub',open.length?open.length+' factu'+(open.length===1?'ur':'ren')+' nog niet betaald':'alles betaald');
   zet('dash-tefact',eur(onfactTotaal));
   zet('dash-tefact-sub',onfact.length?fmt(onfact.reduce((s,e)=>s+e.uren,0))+' uren over '+Object.keys(perKlant).length+' klanten':'alles gefactureerd');
+  const onkOpen=db.onkosten.filter(o=>o.doorrekenen!==false&&!o.gefactureerd);
+  zet('dash-onkost',eur(onkOpen.reduce((s,o)=>s+o.bedrag,0)));
+  zet('dash-onkost-sub',onkOpen.length?onkOpen.length+' onkost'+(onkOpen.length===1?'':'en')+' nog niet op een factuur':'alles doorgerekend');
   zet('dash-betaald',eur(betaaldJaar.reduce((s,f)=>s+f.totaal,0)));
   zet('dash-betaald-sub',betaaldJaar.length+' facturen in '+thisYear);
 
@@ -1988,7 +2248,12 @@ async function delFac(id){
   if(!confirm(vraag))return;
   db.facturen=db.facturen.filter(x=>x.id!==id);
   const terug=ontmarkeerUrenVanFactuur(f);
-  if(terug)setTimeout(()=>alert(terug+' uurregistratie'+(terug===1?'':'s')+' staan weer open en kunnen opnieuw gefactureerd worden.'),100);
+  const terugOnk=ontmarkeerOnkostenVanFactuur(f);
+  if(terug||terugOnk)setTimeout(()=>alert(
+    (terug?terug+' uurregistratie'+(terug===1?'':'s')+' ':'')+
+    (terug&&terugOnk?'en ':'')+
+    (terugOnk?terugOnk+' onkost'+(terugOnk===1?'':'en')+' ':'')+
+    'staan weer open en kunnen opnieuw gefactureerd worden.'),100);
   if(vrij){
     db.settings[teller]=f.nummer;
     try{await saveSettings();}catch(e){console.error('SB save settings:',e);}
@@ -2317,6 +2582,22 @@ function herinneringenKlaarzetten(){
 }
 
 // ===== SUPABASE DATA HELPERS =====
+function sbOnkostToLocal(r){
+  return{id:r.id,clientId:r.client_id,datum:r.datum,
+    omschrijving:r.omschrijving||'',bedrag:parseFloat(r.bedrag)||0,
+    doorrekenen:r.doorrekenen!==false,gefactureerd:r.gefactureerd||false,
+    factuurNr:r.factuur_nr||'',
+    bijlage:r.bijlage||null};
+}
+async function saveOnkost(o){
+  const row={
+    id:o.id, client_id:o.clientId||null, datum:o.datum||null,
+    omschrijving:o.omschrijving||null, bedrag:o.bedrag||0,
+    doorrekenen:o.doorrekenen!==false, gefactureerd:o.gefactureerd||false,
+    factuur_nr:o.factuurNr||null, bijlage:o.bijlage||null
+  };
+  await sbUpsert('onkosten',[row]);
+}
 function sbEntryToLocal(r){
   return{id:r.id,clientId:r.client_id,project:r.project||'',datum:r.datum,
     activiteit:r.activiteit||'',omschrijving:r.omschrijving||'',
@@ -2412,9 +2693,10 @@ async function initFromSupabase(){
   const loadingEl=document.getElementById('sb-loading');
   if(loadingEl)loadingEl.style.display='flex';
   try{
-    const[clients,entries,facturen,settings]=await Promise.all([
+    const[clients,entries,onkosten,facturen,settings]=await Promise.all([
       sbGet('clients','order=id'),
       sbGet('entries','order=datum.desc'),
+      sbGet('onkosten','order=datum.desc').catch(()=>[]),
       sbGet('facturen','order=datum.desc'),
       sbGet('settings')
     ]);
@@ -2424,13 +2706,14 @@ async function initFromSupabase(){
     db.clients.forEach(c=>{colorMap[c.id]=c.color||'c0';});
     db.clients=clients.map(r=>{const l=sbClientToLocal(r);l.color=colorMap[l.id]||'c0';return l;});
     db.entries=entries.map(sbEntryToLocal);
+    db.onkosten=(onkosten||[]).map(sbOnkostToLocal);
     db.facturen=facturen.map(sbFactuurToLocal);
     if(settings&&settings[0]){
       const s=sbSettingsToLocal(settings[0]);
       db.settings=Object.assign(db.settings,s);
       if(settings[0].next_id)db.nextId=settings[0].next_id;
     }
-    console.log('Loaded from Supabase:',db.clients.length,'clients,',db.entries.length,'entries');
+    console.log('Loaded from Supabase:',db.clients.length,'clients,',db.entries.length,'entries,',db.onkosten.length,'onkosten');
   }catch(err){
     console.error('Supabase load error:',err);
     // Een afgewezen of verlopen sessie geeft geen netwerkfout maar een

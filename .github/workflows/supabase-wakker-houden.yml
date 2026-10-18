@@ -1,0 +1,43 @@
+name: Supabase wakker houden
+
+# Een gratis Supabase-project wordt gepauzeerd als het over zeven dagen te
+# weinig activiteit krijgt. Dit tikt de database om de twee dagen even aan,
+# zodat de app niet onverwacht stilligt op het moment dat je wil factureren.
+#
+# De sleutel wordt uit index.html gelezen in plaats van hier herhaald: het is
+# de publieke anon key die toch al in de app staat, en zo is er één bron.
+# Row Level Security blokkeert de inhoud, het verzoek telt wel als activiteit.
+
+on:
+  schedule:
+    - cron: '17 6 */2 * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  aantikken:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Database aantikken
+        run: |
+          set -euo pipefail
+          URL=$(sed -n "s/^const SB_URL = '\([^']*\)'.*/\1/p" index.html)
+          KEY=$(sed -n "s/^const SB_KEY = '\([^']*\)'.*/\1/p" index.html)
+          if [ -z "$URL" ] || [ -z "$KEY" ]; then
+            echo "SB_URL of SB_KEY niet gevonden in index.html"
+            exit 1
+          fi
+          code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 30 \
+            "$URL/rest/v1/settings?select=id&limit=1" \
+            -H "apikey: $KEY" \
+            -H "Authorization: Bearer $KEY")
+          echo "Antwoord van Supabase: HTTP $code"
+          if [ "$code" != "200" ]; then
+            echo "Onverwacht antwoord — project mogelijk gepauzeerd of sleutel gewijzigd."
+            exit 1
+          fi
+          echo "Project is wakker."

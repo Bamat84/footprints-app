@@ -10,7 +10,10 @@ name: Supabase wakker houden
 
 on:
   schedule:
-    - cron: '17 6 */2 * *'
+    # Supabase verwacht "een paar verzoeken per dag". Om de twee dagen bleek
+    # te weinig: het project werd toch voor pauzering aangemerkt. Nu vier keer
+    # per dag.
+    - cron: '17 */6 * * *'
   workflow_dispatch:
 
 permissions:

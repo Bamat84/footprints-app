@@ -313,9 +313,23 @@ input[type=checkbox]{width:auto;accent-color:var(--purple);}
           <div><label>Omschrijving</label><input type="text" id="ok-omschr" placeholder="Reiskosten"></div>
           <div><label>Datum</label><input type="date" id="ok-datum"></div>
           <div><label>Bedrag zoals betaald</label><input type="number" step="0.01" id="ok-bedrag" placeholder="45"></div>
-          <div><label>&nbsp;</label><button class="btn btn-primary" style="width:100%;justify-content:center;" onclick="addOnkost()">+ Voeg toe</button></div>
+          <div><label>Bewijsstuk</label><label class="btn btn-sm" style="cursor:pointer;margin:0;width:100%;justify-content:center;" id="ok-bijlage-lbl">Kies bestand<input type="file" id="ok-bijlage" accept=".pdf,image/*" style="display:none;" onchange="okBijlageGekozen(this)"></label></div>
+        </div>
+        <div class="fr c4">
+          <div style="grid-column:4"><button class="btn btn-primary" style="width:100%;justify-content:center;" onclick="addOnkost()">+ Voeg toe</button></div>
         </div>
       </div>
+    </div>
+
+    <!-- Bijlagen bij deze factuur, al voor ze is opgeslagen -->
+    <div class="card">
+      <h2>Bijlagen</h2>
+      <div id="f-bijlagen-lijst" style="margin-bottom:0.75rem;"></div>
+      <label id="f-dropzone" style="display:block;cursor:pointer;margin:0;padding:1rem;text-align:center;border:1.5px dashed var(--border2);border-radius:var(--rl);background:var(--bg2);transition:all .12s;">
+        <div style="font-size:13px;font-weight:500;">Sleep hier een bestand, of klik om te kiezen</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:3px;">PDF of afbeelding (bon, contract, timesheet …). Ze worden mee bewaard bij het opslaan van de factuur.</div>
+        <input type="file" id="f-bijlage-input" multiple accept=".pdf,image/*" style="display:none;" onchange="facBijlageInput(this)">
+      </label>
     </div>
     <div class="card">
       <h2>Factuurpreview</h2>
@@ -1389,6 +1403,7 @@ function downloadUrenspec(){
 
 // FACTUUR
 let facExtra=[];
+let facBijlagen=[];
 let _editKlantId=null;
 let _editUurId=null;
 function getFacType(){return document.querySelector('input[name="factype"]:checked')?.value||'uren';}
@@ -1417,6 +1432,10 @@ function initFac(){
   }
   calcVervaldag();
   facExtra=[];
+  facBijlagen=[];
+  okBijlageReset();
+  renderFacBijlagen();
+  initFacDropzone();
   facTypeChange();
 }
 function calcVervaldag(){
@@ -1682,12 +1701,90 @@ function renderOnkosten(){
       </td>
     </tr>`;}).join('');
 }
+// ===== BIJLAGEN BIJ DE FACTUUR IN OPMAAK =====
+// Bijlagen konden vroeger pas worden toegevoegd nadat de factuur was
+// opgeslagen. Ze worden nu verzameld tijdens het opstellen en mee bewaard.
+async function bestandNaarBijlage(file){
+  const isPdf=file.type==='application/pdf';
+  const isImg=file.type.startsWith('image/');
+  if(!isPdf&&!isImg){alert(file.name+' is geen PDF of afbeelding.');return null;}
+  if(isPdf&&file.size>3*1024*1024){
+    const mb=(file.size/1048576).toFixed(1).replace('.',',');
+    if(!confirm(file.name+' weegt '+mb+' MB.\n\nDat is zwaar voor een bijlage. Toch toevoegen?'))return null;
+  }
+  let data,mime=file.type;
+  if(isImg){const r=await verkleinAfbeelding(file);data=r.data;mime=r.mime;}
+  else data=await new Promise((res,rej)=>{const r=new FileReader();r.onload=e=>res(e.target.result.split(',')[1]);r.onerror=rej;r.readAsDataURL(file);});
+  return{naam:file.name,type:isPdf?'pdf':'img',mime,data};
+}
+async function facBijlageInput(input){
+  for(const file of input.files){
+    const b=await bestandNaarBijlage(file);
+    if(b)facBijlagen.push(b);
+  }
+  input.value='';
+  renderFacBijlagen();
+}
+function facDelBijlage(i){
+  facBijlagen.splice(i,1);
+  renderFacBijlagen();
+}
+function renderFacBijlagen(){
+  const l=document.getElementById('f-bijlagen-lijst');
+  if(!l)return;
+  if(!facBijlagen.length){l.innerHTML='<div style="font-size:12px;color:var(--text3);">Nog geen bijlagen</div>';return;}
+  l.innerHTML=facBijlagen.map((b,i)=>`
+    <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);">
+      <span style="font-size:18px;">${b.type==='pdf'?'📄':'🖼'}</span>
+      <span style="font-size:13px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(b.naam)}</span>
+      <span style="font-size:11px;color:var(--text3);white-space:nowrap;">${bijlageGrootte(b)}</span>
+      <button class="btn btn-sm btn-danger" onclick="facDelBijlage(${i})" title="Verwijder">✕</button>
+    </div>`).join('');
+}
+let _facDzKlaar=false;
+function initFacDropzone(){
+  const dz=document.getElementById('f-dropzone');
+  // initFac draait bij elk bezoek aan het factuurscherm; de luisteraars mogen
+  // maar één keer worden gekoppeld.
+  if(!dz||_facDzKlaar)return;
+  _facDzKlaar=true;
+  const aan=()=>{dz.style.borderColor='var(--purple)';dz.style.background='var(--purple-l)';};
+  const uit=()=>{dz.style.borderColor='var(--border2)';dz.style.background='var(--bg2)';};
+  ['dragenter','dragover'].forEach(ev=>dz.addEventListener(ev,e=>{e.preventDefault();e.stopPropagation();aan();}));
+  ['dragleave','drop'].forEach(ev=>dz.addEventListener(ev,e=>{e.preventDefault();e.stopPropagation();uit();}));
+  dz.addEventListener('drop',async e=>{
+    const files=e.dataTransfer&&e.dataTransfer.files;
+    if(!files||!files.length)return;
+    for(const file of files){
+      const b=await bestandNaarBijlage(file);
+      if(b)facBijlagen.push(b);
+    }
+    renderFacBijlagen();
+  });
+}
+// Bewijsstuk bij een onkostregel die hier wordt toegevoegd.
+let _okBijlage=null;
+async function okBijlageGekozen(input){
+  const file=input.files&&input.files[0];
+  if(!file){_okBijlage=null;return;}
+  _okBijlage=await bestandNaarBijlage(file);
+  const lbl=document.getElementById('ok-bijlage-lbl');
+  if(lbl)lbl.childNodes[0].nodeValue=_okBijlage?('✓ '+file.name.slice(0,16)):'Kies bestand';
+  if(!_okBijlage)input.value='';
+}
+function okBijlageReset(){
+  _okBijlage=null;
+  const inp=document.getElementById('ok-bijlage');if(inp)inp.value='';
+  const lbl=document.getElementById('ok-bijlage-lbl');if(lbl)lbl.childNodes[0].nodeValue='Kies bestand';
+}
 function addOnkost(){
   const o=document.getElementById('ok-omschr').value.trim();
   const d=document.getElementById('ok-datum').value;
   const b=parseFloat(document.getElementById('ok-bedrag').value);
   if(!o||!b){alert('Vul omschrijving en bedrag in.');return;}
   facExtra.push({id:db.nextId++,type:'onkost',datum:d,omschrijving:o,bedrag:b});
+  // Het bewijsstuk hoort bij de factuur, zodat het met de PDF mee kan.
+  if(_okBijlage){facBijlagen.push(_okBijlage);okBijlageReset();renderFacBijlagen();}
   document.getElementById('ok-omschr').value='';document.getElementById('ok-bedrag').value='';renderFac();
 }
 function delExtra(id){facExtra=facExtra.filter(r=>r.id!==id);renderFac();}
@@ -1747,13 +1844,22 @@ function renderOnkostenBlok(cid){
 function neemOnkostOver(id){
   const o=db.onkosten.find(x=>x.id===id);if(!o)return;
   facExtra.push({id:db.nextId++,type:'onkost',datum:o.datum,omschrijving:o.omschrijving,bedrag:o.bedrag,onkostId:o.id});
+  neemBewijsMee(o);
   renderFac();
+}
+// Het bewijsstuk dat bij een geregistreerde onkost hoort, gaat mee als
+// bijlage bij de factuur, zonder dubbels.
+function neemBewijsMee(o){
+  if(!o.bijlage)return;
+  if(facBijlagen.some(b=>b.naam===o.bijlage.naam&&b.data===o.bijlage.data))return;
+  facBijlagen.push({...o.bijlage});
+  renderFacBijlagen();
 }
 function neemOnkostenOver(){
   const cid=parseInt(document.getElementById('f-klant').value);
   if(!cid)return;
   openOnkosten(cid).filter(o=>!facExtra.some(r=>r.onkostId===o.id))
-    .forEach(o=>facExtra.push({id:db.nextId++,type:'onkost',datum:o.datum,omschrijving:o.omschrijving,bedrag:o.bedrag,onkostId:o.id}));
+    .forEach(o=>{facExtra.push({id:db.nextId++,type:'onkost',datum:o.datum,omschrijving:o.omschrijving,bedrag:o.bedrag,onkostId:o.id});neemBewijsMee(o);});
   renderFac();
 }
 function renderFac(){
@@ -1999,7 +2105,7 @@ async function opslaanFac(){
     return;
   }
   const periodeLabel=document.getElementById('f-periode').value||(fd.van&&fd.tot?fd.van.slice(0,7):'');
-  const newFac={id:db.nextId++,nummer:fd.nummer,po:fd.po,klant:fd.c.naam,klantId:fd.cid,datum:fd.datum,vervaldag:fd.vervaldag,kenmerk:fd.kenmerk,totaal:fd.totaal,subtotaal:fd.subtotaal,btwBedrag:fd.btwBedrag,btwPct:fd.btwPct,extra:[...facExtra],regels:fd.allRegels.map(r=>({...r})),urOmschr:fd.urOmschr,urenIds:fd.urenIds||[],periode:periodeLabel};
+  const newFac={id:db.nextId++,nummer:fd.nummer,po:fd.po,klant:fd.c.naam,klantId:fd.cid,datum:fd.datum,vervaldag:fd.vervaldag,kenmerk:fd.kenmerk,totaal:fd.totaal,subtotaal:fd.subtotaal,btwBedrag:fd.btwBedrag,btwPct:fd.btwPct,extra:[...facExtra],regels:fd.allRegels.map(r=>({...r})),urOmschr:fd.urOmschr,urenIds:fd.urenIds||[],bijlagen:facBijlagen.map(b=>({...b})),periode:periodeLabel};
   db.facturen.unshift(newFac);
   db.settings.facnr=voorgesteldFacNr();
   document.getElementById('f-nummer').value=db.settings.facnr;
@@ -2010,7 +2116,7 @@ async function opslaanFac(){
     (gefactureerd?'\n\n'+gefactureerd+' uurregistratie'+(gefactureerd===1?'':'s')+' gemarkeerd als gefactureerd.':'')+
     (onkOk?'\n'+onkOk+' onkost'+(onkOk===1?'':'en')+' gemarkeerd als doorgerekend.':''));
   window._facSelectieIds=null;window._facSelectieCid=null;
-  facExtra=[];renderFac();renderOv();renderU();renderDash();renderOnkosten();
+  facExtra=[];facBijlagen=[];renderFacBijlagen();renderFac();renderOv();renderU();renderDash();renderOnkosten();
   try{await saveFactuur(newFac);await saveSettings();}catch(e){console.error('SB save factuur:',e);}
 }
 function facStatus(f){

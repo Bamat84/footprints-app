@@ -2,8 +2,14 @@
 <html lang="nl">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>FootPrints</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#1B4F40">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="FootPrints">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 <style>
@@ -48,6 +54,39 @@ tr:last-child td{border-bottom:none;}tr:hover td{background:var(--bg2);}
 .badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:500;}
 .tag{font-size:11px;color:var(--text3);background:var(--bg3);padding:2px 7px;border-radius:20px;}
 .empty{text-align:center;padding:2.5rem;color:var(--text3);font-size:13px;}
+/* ===== SMALLE SCHERMEN =====
+   De app is gebouwd voor een laptop. Op een telefoon worden uren invoeren,
+   onkosten vastleggen en het dashboard bruikbaar gemaakt; de brede tabellen
+   van de timesheet en de facturen krijgen een eigen schuifbalk in plaats van
+   de hele pagina te verschuiven. Het factuurscherm blijft een laptopscherm. */
+@media(max-width:820px){
+  .shell{grid-template-columns:1fr;}
+  .sidebar{border-right:none;border-bottom:1px solid var(--border);padding:0.6rem 0 0;position:sticky;top:0;z-index:300;}
+  .logo{padding:0 1rem 0.5rem;font-size:15px;}
+  nav{display:flex;overflow-x:auto;gap:2px;padding:0 0.5rem;-webkit-overflow-scrolling:touch;}
+  nav a{flex-direction:column;gap:3px;padding:7px 11px;font-size:10.5px;white-space:nowrap;
+        border-left:none;border-bottom:2px solid transparent;text-align:center;}
+  nav a.active{border-left:none;border-bottom:2px solid var(--purple);background:transparent;}
+  nav a svg{width:19px;height:19px;}
+  .main{padding:1rem;overflow-x:hidden;}
+  h1{font-size:18px;margin-bottom:1rem;}
+  .card{padding:1rem;margin-bottom:1rem;}
+  /* Formulieren onder elkaar in plaats van naast elkaar */
+  .fr{grid-template-columns:1fr;}
+  .stats,#dash-stats{grid-template-columns:1fr 1fr;}
+  .stat-val{font-size:19px;}
+  /* Brede tabellen schuiven zelf, de pagina blijft staan */
+  table{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch;}
+  .btn-row{flex-wrap:wrap;justify-content:flex-start;}
+  #backup-banner,#vervallen-banner{flex-wrap:wrap;}
+  /* Vingers in plaats van een muis */
+  input,select,textarea{font-size:16px;padding:10px 12px;}
+  .btn{padding:10px 14px;}
+  .btn-sm{padding:7px 10px;}
+}
+@media(max-width:430px){
+  .stats,#dash-stats{grid-template-columns:1fr;}
+}
 .tabs{display:flex;border-bottom:1px solid var(--border);margin-bottom:1.5rem;}
 .tab-btn{padding:9px 16px;font-size:13px;cursor:pointer;border:none;background:none;color:var(--text2);border-bottom:2px solid transparent;margin-bottom:-1px;font-family:inherit;}
 .tab-btn.active{color:var(--purple);font-weight:500;border-bottom-color:var(--purple);}
@@ -3262,7 +3301,16 @@ async function mailFactuur(){
 }
 
 // ===== STARTUP =====
+// Registreert de service worker, die niets cachet maar de app wel
+// installeerbaar maakt op een telefoon. Mislukt dit, dan werkt de app
+// gewoon verder als website.
+function registreerSW(){
+  if(!('serviceWorker' in navigator))return;
+  if(location.protocol!=='https:')return;
+  navigator.serviceWorker.register('sw.js').catch(e=>console.warn('SW niet geregistreerd:',e));
+}
 async function startup(){
+  registreerSW();
   document.getElementById('u-datum').value=td();
   initDropzone();
   document.addEventListener('keydown',e=>{
@@ -3275,11 +3323,17 @@ async function startup(){
   if(!await zorgVoorSessie()){toonLogin();return;}
   await startApp();
 }
+// De snelkoppelingen op het startscherm openen meteen het juiste scherm.
+function volgStartparameter(){
+  const p=new URLSearchParams(location.search).get('start');
+  if(p&&document.getElementById('page-'+p))showPage(p);
+}
 async function startApp(){
   await initFromSupabase();
   fillSels();renderU();loadSett();renderDash();checkVervallenBanner();
   const el=document.getElementById('s-aangemeld');
   if(el)el.textContent=SB_SESSION&&SB_SESSION.email?('Aangemeld als '+SB_SESSION.email):'Niet aangemeld';
+  volgStartparameter();
 }
 startup();
 </script>

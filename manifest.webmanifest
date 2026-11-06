@@ -1,0 +1,21 @@
+{
+  "name": "FootPrints",
+  "short_name": "FootPrints",
+  "description": "Urenregistratie, onkosten en facturatie voor FootPrints BV",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#F5F3EE",
+  "theme_color": "#1B4F40",
+  "lang": "nl-BE",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Uren invoeren", "url": "./?start=uren" },
+    { "name": "Onkost toevoegen", "url": "./?start=onkosten" }
+  ]
+}
